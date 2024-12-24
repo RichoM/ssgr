@@ -4,7 +4,8 @@
   :license {:name "MIT"
             :url "https://mit-license.org/"}
   :dependencies [[org.clojure/clojure "1.10.3"]
-                 [io.github.nextjournal/markdown "0.6.157"]]
+                 [io.github.nextjournal/markdown "0.6.157"]
+                 [babashka/fs "0.5.23"]]
   :main ^:skip-aot ssgr.core
   :target-path "target/%s"
   :profiles {:uberjar {:aot :all
