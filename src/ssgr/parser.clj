@@ -1,4 +1,4 @@
-(ns ssgr.markdown
+(ns ssgr.parser
   (:require [petitparser.core :as pp]
             [clojure.string :as str]))
 
@@ -23,8 +23,8 @@
      :line (pp/or :empty-line :atx-heading :text-line)
      :atx-heading [:ws? (pp/plus \#) :text (pp/optional :newline)]
      :text (pp/flatten
-            (pp/plus (pp/predicate #(not (or (= \newline %)
-                                             (= \return %)))
+            (pp/plus (pp/predicate #(and (not= % \return)
+                                         (not= % \newline))
                                    "Any char except newline")))
      :text-line [:text (pp/optional :newline)]
      ;:text-line (pp/flatten
@@ -46,14 +46,18 @@
 (defn parse [src] (pp/parse parser src))
 
 (comment
-  (pp/parse (-> parser :parsers :text)
-            "asdf\n")
-  
-  (parse "# Richo capo\nTest.\nSegunda línea\n\nSegundo párrafo.")
+  (require '[portal.api :as p])
+
+  (def p (p/open))
+  (add-tap #'p/submit) ; Add portal as a tap> target
+  \n
+
+  (tap> {:richo "CAPO"})
+  (tap> (parse "# Richo capo\nTest.\nSegunda línea\n\nSegundo párrafo.\nPrueba\nFin."))
 
   (doseq  [line (pp/parse parser (slurp "README.md"))]
     (println line))
-  
 
-  
+
+
   )
