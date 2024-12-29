@@ -7,7 +7,8 @@
                  [markdown-clj "1.12.2"]
                  [hiccup "1.0.5"]
                  [clj-petitparser "0.1.2-SNAPSHOT"]
-                 [babashka/fs "0.5.23"]]
+                 [babashka/fs "0.5.23"]
+                 [org.babashka/sci "0.9.44"]]
   :main ^:skip-aot ssgr.core
   :target-path "target/%s"
   :profiles {:dev {:dependencies [[org.clojure/core.async "0.6.532"]
