@@ -10,8 +10,10 @@
                  [babashka/fs "0.5.23"]]
   :main ^:skip-aot ssgr.core
   :target-path "target/%s"
-  :profiles {:dev {:global-vars {*unchecked-math* :warn-on-boxed
-                                 *warn-on-reflection* true}}
+  :profiles {:dev {:dependencies [[org.clojure/core.async "0.6.532"]
+                                  [org.clojars.beppu/clj-audio "0.3.0"]]
+                   :resource-paths ["sounds"]
+                   :plugins [[com.jakemccrary/lein-test-refresh "0.24.1"]]}
              :uberjar {:aot :all
                        :jvm-opts ["-Dclojure.compiler.direct-linking=true"
                                   "-Dclojure.compiler.elide-meta=[:doc :file :line :added]"]}})
