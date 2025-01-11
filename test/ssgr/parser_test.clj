@@ -1,4 +1,4 @@
-(ns ssgr.markdown-test
+(ns ssgr.parser-test
   (:require [clojure.test :refer [deftest testing is]]
             [ssgr.parser :as p]))
 
