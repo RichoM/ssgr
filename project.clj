@@ -3,7 +3,7 @@
   :url "https://github.com/RichoM/ssgr"
   :license {:name "MIT"
             :url "https://mit-license.org/"}
-  :dependencies [[org.clojure/clojure "1.10.3"]
+  :dependencies [[org.clojure/clojure "1.12.0"]
                  [markdown-clj "1.12.2"]
                  [hiccup "1.0.5"]
                  [clj-petitparser "0.1.2-SNAPSHOT"]
