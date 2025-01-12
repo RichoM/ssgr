@@ -3,8 +3,8 @@
             [petitparser.core :as pp]
             [petitparser.input-stream :as in]
             [petitparser.results :as r]
-            [edamame.core :as e]))
-
+            [edamame.core :as e]
+            [ssgr.doc :as doc]))
 
 (set! *unchecked-math* :warn-on-boxed)
 (set! *warn-on-reflection* true)
@@ -50,39 +50,6 @@
 
 (def clojure-parser (ClojureParser.))
 
-(defn heading [level & elements]
-  {:type ::heading
-   :level level
-   :elements elements})
-
-(defn text [text]
-  {:type ::text
-   :text text})
-
-(defn code [form]
-  {:type ::code
-   :form form})
-
-(defn paragraph [& lines]
-  {:type ::paragraph
-   :lines lines})
-
-(defn line [& elements]
-  {:type ::line
-   :elements elements})
-
-(defn text-line [text-content]
-  (line (text text-content)))
-
-(defn code-line [form]
-  (line (code form)))
-
-(def empty-line {:type ::empty-line})
-
-(defn document [& blocks]
-  {:type ::document
-   :blocks blocks})
-
 (defn lines->blocks [lines]
   (->> lines
        (partition-by :type)
@@ -90,9 +57,9 @@
                  (when-let [{:keys [type]} (first group)]
                    (case type
                      ; Headings are blocks already
-                     ::heading group
+                     ::doc/heading group
                      ; Lines should be grouped into paragraphs
-                     ::line [(apply paragraph group)]
+                     ::doc/line [(apply doc/paragraph group)]
                      []))))))
 
 (do
@@ -120,68 +87,23 @@
 
   (def transformations
     {:document (fn [lines]
-                 (apply document (lines->blocks lines)))
+                 (apply doc/document (lines->blocks lines)))
      :lines (fn [lines]
               (->> lines
                    (take-nth 2)
-                   (map #(or % empty-line))))
+                   (map #(or % doc/empty-line))))
      :line (fn [heading-or-inline]
              (if (vector? heading-or-inline)
-               (apply line heading-or-inline)
+               (apply doc/line heading-or-inline)
                heading-or-inline))
      :atx-heading (fn [[_ atx _ content]]
-                    (apply heading (count atx) content))
-     :text (comp text str/trim)
+                    (apply doc/heading (count atx) content))
+     :text (comp doc/text str/trim)
      :code (fn [{:keys [parsed-value] :as token}]
-             (vary-meta (code parsed-value)
+             (vary-meta (doc/code parsed-value)
                         assoc :token token))
      :newline (constantly \newline)})
 
   (def parser (pp/compose grammar transformations)))
 
 (defn parse [src] (pp/parse parser src))
-
-(comment
-  (parse "# Richo (+ a b)")
-  (parse "# Richo capo")
-  (parse "# Richo\n(+ 3 4)")
-  (def lines (pp/parse (-> parser :parsers :lines) "# Title\n\nRicho\nCapo\n\n123"))
-
-
-  (partition-by :type [{:type :ssgr.parser/empty-line}
-                       {:content [{:text "Richo", :type :ssgr.parser/text}], :level 1, :type :ssgr.parser/heading}
-                       {:text "Text", :type :ssgr.parser/text}
-                       {:text "Text 2", :type :ssgr.parser/text}
-                       {:type :ssgr.parser/empty-line}
-                       {:type :ssgr.parser/empty-line}
-                       {:text "Text3", :type :ssgr.parser/text}])
-  (tap> (->> (parse "\n# Richo  \nText\nText 2\n\n\nText3")
-             (partition-all 2)
-             (map (fn [[a b]]
-                    (if (nil? a)
-                      empty-line
-                      a)))))
-  
-  (pp/parse (pp/seq (-> parser :parsers :atx-heading)
-                    (pp/optional pp/any))
-            "\n# Richo  \n")
-
-  (require '[portal.api :as p])
-
-  (def p (p/open {:launcher :vs-code}))
-  (add-tap #'p/submit)
-
-  (tap> (pp/parse (-> parser :parsers :paragraph)
-                  ""))
-  (tap> {:richo "CAPO"})
-  (tap> (parse "# Richo capo\nTest.\nSegunda línea\n\nSegundo párrafo.\nPrueba\nFin."))
-
-  (doseq  [line (parse (slurp "README.md"))]
-    (println line))
-
-  (p/close p)
-
-
-  (pp/parse (pp/as-parser [(pp/separated-by pp/digit pp/letter) pp/letter])
-            "1a2b3")
-  )
