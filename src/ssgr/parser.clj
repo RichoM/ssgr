@@ -111,7 +111,7 @@
      :inline (pp/or :code :text)
      :text (pp/flatten (pp/or (pp/plus-lazy :char :code)
                               (pp/plus :char)))
-     :code clojure-parser
+     :code (pp/token clojure-parser)
      :ws (pp/flatten (pp/plus (pp/or \tab \space)))
      :char (pp/predicate #(and (not= % \return)
                                (not= % \newline))
@@ -132,7 +132,9 @@
      :atx-heading (fn [[_ atx _ content]]
                     (apply heading (count atx) content))
      :text (comp text str/trim)
-     :code code
+     :code (fn [{:keys [parsed-value] :as token}]
+             (vary-meta (code parsed-value)
+                        assoc :token token))
      :newline (constantly \newline)})
 
   (def parser (pp/compose grammar transformations)))
