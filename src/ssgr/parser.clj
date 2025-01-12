@@ -48,10 +48,10 @@
 (set! *unchecked-math* :warn-on-boxed)
 (set! *warn-on-reflection* true)
 
-(defn heading [level content]
+(defn heading [level & elements]
   {:type ::heading
    :level level
-   :content content})
+   :elements elements})
 
 (defn text [text]
   {:type ::text
@@ -61,24 +61,63 @@
   {:type ::code
    :form form})
 
-(defn paragraph [lines]
+(defn paragraph [& lines]
   {:type ::paragraph
    :lines lines})
 
+(defn line [& elements]
+  {:type ::line
+   :elements elements})
+
+(defn text-line [text-content]
+  (line (text text-content)))
+
+(defn code-line [form]
+  (line (code form)))
+
 (def empty-line {:type ::empty-line})
+
+(defn document [& blocks]
+  {:type ::document
+   :blocks blocks})
+
+(def type-groups {::heading 1
+                  ::text 0
+                  ::code 0})
+
+(defn lines->blocks [lines]
+  (->> lines
+       (take-nth 2)
+       (mapv #(if % % empty-line))
+       (partition-by :type)
+       (mapcat (fn [group]
+                 (when-let [{:keys [type]} (first group)]
+                   (case type
+                     ; Headings are blocks already
+                     ::heading group
+                     ; Lines should be grouped into paragraphs
+                     ::line [(apply paragraph (vec group))]
+                     []))))
+       (vec)))
+
+(comment
+  
+  (lines->blocks lines)
+  )
 
 (do
   (def grammar
     {:start :lines
      :lines (pp/separated-by (pp/optional :line) 
                              :newline)
-     :line (pp/or :atx-heading :inline)
+     :line (pp/or :atx-heading 
+                  (pp/plus :inline))
      :atx-heading [(pp/star :ws) 
                    (pp/plus \#) 
                    (pp/plus :ws) 
                    (pp/star :inline)
                    (pp/star :ws)]
-     :inline (pp/or :text :code)
+     :inline (pp/or :code :text)
      :text (pp/flatten (pp/or (pp/plus-lazy :char :code)
                               (pp/plus :char)))
      :code clojure-parser
@@ -90,19 +129,14 @@
 
   (def transformations
     {:lines (fn [lines]
-              (->> lines
-                   (take-nth 2)
-                   (mapv #(if % % empty-line))
-                   (partition-by :type)
-                   (mapcat (fn [group]
-                           (when-let [{:keys [type]} (first group)]
-                             (case type
-                               ::heading group
-                               ::text [(paragraph (vec group))]
-                               []))))
-                   (vec)))
+              (apply document
+                     (lines->blocks lines)))
+     :line (fn [heading-or-inline]
+             (if (vector? heading-or-inline)
+               (apply line heading-or-inline)
+               heading-or-inline))
      :atx-heading (fn [[_ atx _ content]]
-                    (heading (count atx) content))
+                    (apply heading (count atx) content))
      :text (comp text str/trim)
      :code code
      :newline (constantly \newline)})
@@ -112,11 +146,11 @@
 (defn parse [src] (pp/parse parser src))
 
 (comment
-  
-  (pp/parse (pp/star (:inline (:parsers parser))) "Richo (+ 3 4)")
   (parse "# Richo (+ 3 4)")
   (parse "# Richo capo")
   (parse "# Richo\n(+ 3 4)")
+  (def lines (pp/parse (-> parser :parsers :lines) "# Title\n\nRicho\nCapo\n\n123"))
+
 
   (partition-by :type [{:type :ssgr.parser/empty-line}
                        {:content [{:text "Richo", :type :ssgr.parser/text}], :level 1, :type :ssgr.parser/heading}
