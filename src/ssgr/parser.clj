@@ -5,6 +5,10 @@
             [petitparser.results :as r]
             [edamame.core :as e]))
 
+
+(set! *unchecked-math* :warn-on-boxed)
+(set! *warn-on-reflection* true)
+
 (defn line-indices [string]
   (loop [[line & rest] (str/split string #"\n")
          start 0
@@ -19,12 +23,13 @@
       (persistent! indices))))
 
 (defn advance-stream-to-match! [stream reader source]
-  (let [line-number (e/get-line-number reader)
-        column-number (e/get-column-number reader)
-        position (+ (first (nth (line-indices source)
-                                (dec line-number)))
-                    (dec column-number)
-                    (in/position stream))]
+  (let [^long line-number (e/get-line-number reader)
+        ^long column-number (e/get-column-number reader)
+        [line-position] (nth (line-indices source)
+                             (dec line-number))
+        ^long position (+ (in/position stream)
+                          line-position
+                          (dec column-number))]
     (in/reset-position! stream position)))
 
 (defrecord ClojureParser []
@@ -44,9 +49,6 @@
                  (str "Literal '(' expected")))))
 
 (def clojure-parser (ClojureParser.))
-
-(set! *unchecked-math* :warn-on-boxed)
-(set! *warn-on-reflection* true)
 
 (defn heading [level & elements]
   {:type ::heading
@@ -81,14 +83,8 @@
   {:type ::document
    :blocks blocks})
 
-(def type-groups {::heading 1
-                  ::text 0
-                  ::code 0})
-
 (defn lines->blocks [lines]
   (->> lines
-       (take-nth 2)
-       (mapv #(if % % empty-line))
        (partition-by :type)
        (mapcat (fn [group]
                  (when-let [{:keys [type]} (first group)]
@@ -96,18 +92,13 @@
                      ; Headings are blocks already
                      ::heading group
                      ; Lines should be grouped into paragraphs
-                     ::line [(apply paragraph (vec group))]
-                     []))))
-       (vec)))
-
-(comment
-  
-  (lines->blocks lines)
-  )
+                     ::line [(apply paragraph group)]
+                     []))))))
 
 (do
   (def grammar
-    {:start :lines
+    {:start :document
+     :document :lines
      :lines (pp/separated-by (pp/optional :line) 
                              :newline)
      :line (pp/or :atx-heading 
@@ -128,9 +119,12 @@
      :newline (pp/or "\r\n" \return \newline )})
 
   (def transformations
-    {:lines (fn [lines]
-              (apply document
-                     (lines->blocks lines)))
+    {:document (fn [lines]
+                 (apply document (lines->blocks lines)))
+     :lines (fn [lines]
+              (->> lines
+                   (take-nth 2)
+                   (map #(or % empty-line))))
      :line (fn [heading-or-inline]
              (if (vector? heading-or-inline)
                (apply line heading-or-inline)
@@ -146,7 +140,7 @@
 (defn parse [src] (pp/parse parser src))
 
 (comment
-  (parse "# Richo (+ 3 4)")
+  (parse "# Richo (+ a b)")
   (parse "# Richo capo")
   (parse "# Richo\n(+ 3 4)")
   (def lines (pp/parse (-> parser :parsers :lines) "# Title\n\nRicho\nCapo\n\n123"))
