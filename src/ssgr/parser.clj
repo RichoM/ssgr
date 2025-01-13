@@ -71,7 +71,7 @@
      :line (pp/or :atx-heading 
                   (pp/plus :inline))
      :atx-heading [(pp/star :ws) 
-                   (pp/plus \#) 
+                   (pp/times \# 1 6) 
                    (pp/plus :ws) 
                    (pp/star :inline)
                    (pp/star :ws)]
@@ -107,3 +107,12 @@
   (def parser (pp/compose grammar transformations)))
 
 (defn parse [src] (pp/parse parser src))
+
+(comment
+  
+  (pp/parse (pp/end (pp/times \# 1 6))
+            "#######")
+  
+  (pp/parse (-> parser :parsers :line) "####### Title")
+  (tap> (parse "###### Title"))
+  )
