@@ -6,7 +6,7 @@
   :dependencies [[org.clojure/clojure "1.12.0"]
                  [markdown-clj "1.12.2"]
                  [hiccup "1.0.5"]
-                 [clj-petitparser "0.1.2-SNAPSHOT"]
+                 [clj-petitparser "0.1.3"]
                  [babashka/fs "0.5.23"]
                  [org.babashka/sci "0.9.44"]]
   :main ^:skip-aot ssgr.core
