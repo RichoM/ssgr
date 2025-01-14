@@ -16,6 +16,18 @@
 (defmethod render* ::doc/code [{:keys [form]}]
   (str form))
 
+(defn relative-url? [url]
+  (nil? (re-find #"^(?i)(?:[a-z+]+:)?//" url)))
+
+(defn fix-url [url]
+  (if (relative-url? url)
+    (-> url
+        (str/replace #"\.md$" ".html"))
+    url))
+
+(defmethod render* ::doc/link [{:keys [text destination]}]
+  [:a {:href (fix-url destination)} text])
+
 (defmethod render* ::doc/paragraph [{:keys [lines]}]
   (vec (concat [:p]
                (mapcat render* lines))))
@@ -37,9 +49,12 @@
   (h/html [:span "Richo capo"])
   (h/html [:h1 [:span "Richo"]])
 
+  (re-find #"^(?i)(?:[a-z+]+:)?//"
+           "test")
   (->> (render (doc/document
-                (doc/heading 1 (doc/text "Main title"))
-                (doc/paragraph (doc/text-line "Richo capo"))))
+                (doc/paragraph
+                 (doc/line (doc/link "test"
+                                     "http://url.com")))))
        (map #(h/html %))
        (str/join "\n"))
 

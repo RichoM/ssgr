@@ -62,3 +62,22 @@
            (d/line (d/text "Richo")
                    (d/code '(+ 3 4))
                    (d/text "capo")))))))
+
+(deftest link
+  (is (= (p/parse "[test](http://url.com)")
+         (d/document
+          (d/paragraph
+           (d/line (d/link "test"
+                           "http://url.com"))))))
+  (is (= (p/parse "Probando un texto con un link en la misma línea: [test](http://url.com)")
+         (d/document
+          (d/paragraph
+           (d/line 
+            (d/text "Probando un texto con un link en la misma línea:")
+            (d/link "test" "http://url.com"))))))
+  (is (= (p/parse "# Link in heading [test](http://url.com) #######")
+         (d/document
+          (d/heading
+           1
+           (d/text "Link in heading")
+           (d/link "test" "http://url.com"))))))

@@ -62,28 +62,44 @@
                      ::doc/line [(apply doc/paragraph group)]
                      []))))))
 
+(defn any-character-except [exception-set]
+  (apply pp/or
+         (conj (mapv #(pp/seq \\ %) exception-set)
+               (pp/predicate #(not (contains? exception-set %))
+                             (str "Expected any character except " exception-set)))))
+
 (do
   (def grammar
     {:start :document
      :document :lines
-     :lines (pp/separated-by (pp/optional :line) 
+     :lines (pp/separated-by (pp/optional :line)
                              :newline)
-     :line (pp/or :atx-heading 
+     :line (pp/or :atx-heading
                   (pp/plus :inline))
-     :atx-heading [(pp/star :ws) 
-                   (pp/times \# 1 6) 
-                   (pp/plus :ws) 
+     :atx-heading [(pp/star :ws)
+                   (pp/times \# 1 6)
+                   (pp/plus :ws)
                    (pp/star :inline)
                    (pp/star :ws)]
-     :inline (pp/or :code :text)
-     :text (pp/flatten (pp/or (pp/plus-lazy :char :code)
-                              (pp/plus :char)))
+     :inline (pp/or :link :code :text)
+     :link [\[
+            (pp/flatten
+             (pp/star (any-character-except #{\[ \]})))
+            \]
+            \(
+            (pp/flatten
+             (pp/star (any-character-except #{\( \)})))
+            \)]
      :code (pp/token clojure-parser)
+     :text (pp/flatten (pp/or (pp/plus-lazy :char
+                                            (pp/or :link
+                                                   :code))
+                              (pp/plus :char)))
      :ws (pp/flatten (pp/plus (pp/or \tab \space)))
      :char (pp/predicate #(and (not= % \return)
                                (not= % \newline))
                          "Any char except newline")
-     :newline (pp/or "\r\n" \return \newline )})
+     :newline (pp/or "\r\n" \return \newline)})
 
   (def transformations
     {:document (fn [lines]
@@ -98,10 +114,12 @@
                heading-or-inline))
      :atx-heading (fn [[_ atx _ content]]
                     (apply doc/heading (count atx) content))
-     :text (comp doc/text str/trim)
+     :link (fn [[_ text _ _ dest]]
+             (doc/link text dest))
      :code (fn [{:keys [parsed-value] :as token}]
              (vary-meta (doc/code parsed-value)
                         assoc :token token))
+     :text (comp doc/text str/trim)
      :newline (constantly \newline)})
 
   (def parser (pp/compose grammar transformations)))
@@ -110,7 +128,7 @@
 
 (comment
 
-  (parse "# Richo")
+  (parse "Prueba [a\\[\\]bc](def)")
 
   (pp/parse (-> parser :parsers :line) "####### Title")
   (tap> (parse "###### Title"))

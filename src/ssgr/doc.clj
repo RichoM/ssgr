@@ -10,11 +10,16 @@
 
 (defn- trim-heading [elements]
   (let [last (peek elements)]
-    (conj (pop elements)
-          (if (text? last)
-            (update last :text
-                    #(str/replace % #"\s+#*$" ""))
-            last))))
+    (if (text? last)
+      (let [trimmed-last (update last :text
+                                 #(-> %
+                                      (str/replace #"\s+#*$" "")
+                                      (str/replace #"^#+" "")))]
+        (if (empty? (:text trimmed-last))
+          (pop elements)
+          (conj (pop elements)
+                trimmed-last)))
+      elements)))
 
 (defn heading [level & elements]
   {:type ::heading
@@ -28,6 +33,11 @@
 (defn code [form]
   {:type ::code
    :form form})
+
+(defn link [text destination]
+  {:type ::link
+   :text text
+   :destination destination})
 
 (defn paragraph [& lines]
   {:type ::paragraph
