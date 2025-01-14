@@ -109,10 +109,9 @@
 (defn parse [src] (pp/parse parser src))
 
 (comment
-  
-  (pp/parse (pp/end (pp/times \# 1 6))
-            "#######")
-  
+
+  (parse "# Richo")
+
   (pp/parse (-> parser :parsers :line) "####### Title")
   (tap> (parse "###### Title"))
   )

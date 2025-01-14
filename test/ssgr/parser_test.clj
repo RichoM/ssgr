@@ -13,6 +13,20 @@
           (d/heading 2
                      (d/text "Heading 2"))))))
 
+(deftest atx-heading-with-trailing-hashtags
+  (is (= (p/parse "# Heading#")
+         (d/document
+          (d/heading 1
+                     (d/text "Heading#")))))
+  (is (= (p/parse "# Heading #")
+         (d/document
+          (d/heading 1
+                     (d/text "Heading")))))
+  (is (= (p/parse "# Heading  ##")
+         (d/document
+          (d/heading 1
+                     (d/text "Heading"))))))
+
 (deftest regular-text 
   (is (= (p/parse "Texto normal")
          (d/document
