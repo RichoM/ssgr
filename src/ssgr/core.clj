@@ -6,6 +6,11 @@
             [hiccup.core :as h])
   (:gen-class))
 
+(defn copy-file! [src dest]
+  (let [components (fs/components dest)]
+    (fs/create-dirs (apply fs/path (drop-last components)))
+    (fs/copy src dest)))
+
 (defn write-file! [path contents]
   (let [components (fs/components path)]
     (fs/create-dirs (apply fs/path (drop-last components)))
@@ -25,24 +30,29 @@
 
 (defn -main
   [& [src out]]
-  (println "Looking for markdown files on" src)
+  (println "Looking for files on" src)
   (let [src (fs/path src)
         out (fs/path out)]
     (fs/delete-tree out)
     (doseq [path (->> (fs/glob (fs/path src) "**")
-                      (filter #(= "md" (fs/extension %))))]
+                      (remove fs/directory?))]
       (println)
       (println (str "Found: " path))
-      (let [out-path (-> path
-                         (str/replace-first (str src) (str out))
-                         (fs/strip-ext)
-                         (str ".html"))]
-        (println out-path)
-        (process-file! path out-path)))))
+      (if (= "md" (fs/extension path))
+        (let [out-path (-> path
+                           (str/replace-first (str src) (str out))
+                           (fs/strip-ext)
+                           (str ".html"))]
+          (println out-path)
+          (process-file! path out-path))
+        (let [out-path (str/replace-first path (str src) (str out))]
+          (println out-path)
+          (copy-file! path out-path))))))
 
 (comment
-  
+  (fs/di)
   (-main "doc" "out")
+  (-main "D:\\RichoM\\rescuesim\\rescuesim-intro" "out")
   )
 
 (comment  
