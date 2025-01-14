@@ -81,7 +81,8 @@
                    (pp/plus :ws)
                    (pp/star :inline)
                    (pp/star :ws)]
-     :inline (pp/or :link :code :text)
+     :inline (pp/or :image :link :code :text)
+     :image [\! :link]
      :link [\[
             (pp/flatten
              (pp/star (any-character-except #{\[ \]})))
@@ -92,7 +93,8 @@
             \)]
      :code (pp/token clojure-parser)
      :text (pp/flatten (pp/or (pp/plus-lazy :char
-                                            (pp/or :link
+                                            (pp/or :image
+                                                   :link
                                                    :code))
                               (pp/plus :char)))
      :ws (pp/flatten (pp/plus (pp/or \tab \space)))
@@ -114,6 +116,8 @@
                heading-or-inline))
      :atx-heading (fn [[_ atx _ content]]
                     (apply doc/heading (count atx) content))
+     :image (fn [[_ {:keys [text destination]}]]
+              (doc/image destination text))
      :link (fn [[_ text _ _ dest]]
              (doc/link text dest))
      :code (fn [{:keys [parsed-value] :as token}]

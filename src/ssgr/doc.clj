@@ -39,6 +39,12 @@
    :text text
    :destination destination})
 
+(defn image [src alt]
+  {:type ::image
+   :src src
+   :alt alt})
+
+
 (defn paragraph [& lines]
   {:type ::paragraph
    :lines (vec lines)})

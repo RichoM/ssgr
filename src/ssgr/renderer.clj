@@ -28,6 +28,9 @@
 (defmethod render* ::doc/link [{:keys [text destination]}]
   [:a {:href (fix-url destination)} text])
 
+(defmethod render* ::doc/image [{:keys [src alt]}]
+  [:img {:src src :alt alt}])
+
 (defmethod render* ::doc/paragraph [{:keys [lines]}]
   (vec (concat [:p]
                (mapcat render* lines))))
