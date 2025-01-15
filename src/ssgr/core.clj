@@ -50,7 +50,7 @@
           (copy-file! path out-path))))))
 
 (comment
-  (fs/di)
+  
   (-main "doc" "out")
   (-main "D:\\RichoM\\rescuesim\\rescuesim-intro" "out")
   )

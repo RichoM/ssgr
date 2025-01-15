@@ -122,7 +122,7 @@
      :code (fn [{:keys [parsed-value] :as token}]
              (vary-meta (doc/code parsed-value)
                         assoc :token token))
-     :text (comp doc/text str/trim)
+     :text doc/text
      :newline (constantly \newline)})
 
   (def parser (pp/compose grammar transformations)))
