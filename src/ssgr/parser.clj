@@ -81,7 +81,8 @@
                    (pp/plus :ws)
                    (pp/star :inline)
                    (pp/star :ws)]
-     :inline (pp/or :image :link :code :text)
+     :inline (pp/or :inline-but-text :text)
+     :inline-but-text (pp/or :image :link :code)
      :image [\! :link]
      :link [\[
             (pp/flatten
@@ -93,9 +94,7 @@
             \)]
      :code (pp/token clojure-parser)
      :text (pp/flatten (pp/or (pp/plus-lazy :char
-                                            (pp/or :image
-                                                   :link
-                                                   :code))
+                                            :inline-but-text)
                               (pp/plus :char)))
      :ws (pp/flatten (pp/plus (pp/or \tab \space)))
      :char (pp/predicate #(and (not= % \return)
