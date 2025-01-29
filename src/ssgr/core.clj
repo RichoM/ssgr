@@ -22,7 +22,7 @@
           doc (p/parse text)
           hiccup (r/render doc)
           html (->> hiccup
-                    (map #(h/html %))
+                    (map r/html)
                     (str/join "\n"))]
       (write-file! out html))
     (catch Exception ex

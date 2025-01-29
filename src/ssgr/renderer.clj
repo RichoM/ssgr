@@ -44,6 +44,9 @@
 (defn render [document]
   (render* document))
 
+(defn html [content]
+  (h/html content))
+
 (comment
   (require '[hiccup.core :as h])
 
