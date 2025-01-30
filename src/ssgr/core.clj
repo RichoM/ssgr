@@ -2,7 +2,8 @@
   (:require [babashka.fs :as fs]
             [clojure.string :as str]
             [ssgr.parser :as p]
-            [ssgr.renderer :as r])
+            [ssgr.renderer :as r]
+            [ssgr.eval :as e])
   (:gen-class))
 
 (defn copy-file! [src dest]
@@ -33,6 +34,7 @@
   (let [src (fs/path src)
         out (fs/path out)]
     (fs/delete-tree out)
+    (e/reset-callbacks!)
     (doseq [path (->> (fs/glob (fs/path src) "**")
                       (remove fs/directory?))]
       (println)

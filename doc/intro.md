@@ -21,3 +21,7 @@ También puedo poner objetos interactivos como [:button {:onclick "alert('hola')
 Ahora voy a probar un contador.
 
 El contador ahora tiene el valor (deref counter). Si lo incremento pasa a tener: (swap! counter inc).
+
+(println "ACAACA")
+
+Fin

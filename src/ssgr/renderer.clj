@@ -4,6 +4,8 @@
             [hiccup.core :as h]
             [clojure.string :as str]))
 
+(declare render)
+
 (defmulti render* :type)
 
 (defmethod render* ::doc/text [{:keys [text]}]
@@ -12,7 +14,7 @@
 (defmethod render* ::doc/heading [{:keys [level elements]}]
   ; TODO(Richo): If all elements are text we should avoid the spans
   (vec (concat [(keyword (str \h level))]
-               (map render* elements))))
+               (map render elements))))
 
 (defmethod render* ::doc/code [{:keys [form]}]
   (e/eval-form form))
@@ -33,24 +35,28 @@
   [:img {:src src :alt alt}])
 
 (defmethod render* ::doc/paragraph [{:keys [lines]}]
-  (let [rendered-lines (mapcat render* lines)]
+  (let [rendered-lines (mapcat render lines)]
     (when (seq rendered-lines)
       (vec (concat [:p] rendered-lines)))))
 
 (defmethod render* ::doc/line [{:keys [elements]}]
-  (vec (keep render* elements)))
+  (vec (keep render elements)))
 
 (defmethod render* ::doc/document [{:keys [blocks]}] 
-  (vec (keep render* blocks)))
+  (vec (keep render blocks)))
 
-(defn render [document]
-  (render* document))
+(defn render [element]
+  (let [result (render* element)]
+    (e/eval-render element result)))
 
 (defn html [content]
   (h/html content))
 
 (comment
   (require '[hiccup.core :as h])
+
+  (def x 5)
+  (def lst '(a b c))
 
   (concat [:p]
           [1 2 23])
