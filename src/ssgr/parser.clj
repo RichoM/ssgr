@@ -35,11 +35,11 @@
 (defrecord ClojureParser []
   petitparser.parsers.Parser
   (parse-on [_ stream]
-    (if (= \( (in/peek stream))
+    (if (#{\( \[} (in/peek stream))
       (try
         (let [src (subs (in/source stream) (in/position stream))
               reader (e/source-reader src)
-              result (e/parse-next reader #_(e/normalize-opts {:all false}))]
+              result (e/parse-next reader (e/normalize-opts {:all true}))]
           (advance-stream-to-match! stream reader src)
           (r/success result))
         (catch Exception _
@@ -131,6 +131,7 @@
 
 (comment
 
+  (pp/parse clojure-parser "(do @counter)")
   (parse "Prueba [a\\[\\]bc](def)")
 
   (pp/parse (-> parser :parsers :line) "####### Title")
