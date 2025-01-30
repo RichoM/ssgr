@@ -45,6 +45,11 @@
          (d/document
           (d/paragraph (d/code-line '(println 3 4))
                        (d/code-line '(+ 3 4)))
+          (d/paragraph (d/text-line "Test")))))
+  (is (= (p/parse "(do @counter)\n[:div (+ a b)]\n\nTest")
+         (d/document
+          (d/paragraph (d/code-line '(do @counter))
+                       (d/code-line '[:div (+ a b)]))
           (d/paragraph (d/text-line "Test"))))))
 
 (deftest code-inside-heading
@@ -53,6 +58,14 @@
           (d/heading 1 
                      (d/text "Richo ")
                      (d/code '(+ 3 4))
+                     (d/text " capo")))))
+  (is (= (p/parse "# Richo (do @test) [1 2 3] capo")
+         (d/document
+          (d/heading 1
+                     (d/text "Richo ")
+                     (d/code '(do @test))
+                     (d/text " ")
+                     (d/code '[1 2 3])
                      (d/text " capo"))))))
 
 (deftest code-inside-text
@@ -61,6 +74,14 @@
           (d/paragraph
            (d/line (d/text "Richo ")
                    (d/code '(+ 3 4))
+                   (d/text " capo"))))))
+  (is (= (p/parse "Richo (do @test) [1 2 3] capo")
+         (d/document
+          (d/paragraph
+           (d/line (d/text "Richo ")
+                   (d/code '(do @test))
+                   (d/text " ")
+                   (d/code '[1 2 3])
                    (d/text " capo")))))))
 
 (deftest link
