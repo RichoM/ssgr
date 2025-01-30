@@ -1,5 +1,6 @@
 (ns ssgr.renderer
   (:require [ssgr.doc :as doc]
+            [ssgr.eval :as e]
             [hiccup.core :as h]
             [clojure.string :as str]))
 
@@ -14,7 +15,7 @@
                (map render* elements))))
 
 (defmethod render* ::doc/code [{:keys [form]}]
-  (str form))
+  (e/eval-form form))
 
 (defn relative-url? [url]
   (nil? (re-find #"^(?i)(?:[a-z+]+:)?//" url)))
@@ -32,14 +33,15 @@
   [:img {:src src :alt alt}])
 
 (defmethod render* ::doc/paragraph [{:keys [lines]}]
-  (vec (concat [:p]
-               (mapcat render* lines))))
+  (let [rendered-lines (mapcat render* lines)]
+    (when (seq rendered-lines)
+      (vec (concat [:p] rendered-lines)))))
 
 (defmethod render* ::doc/line [{:keys [elements]}]
-  (mapv render* elements))
+  (vec (keep render* elements)))
 
 (defmethod render* ::doc/document [{:keys [blocks]}] 
-  (mapv render* blocks))
+  (vec (keep render* blocks)))
 
 (defn render [document]
   (render* document))
