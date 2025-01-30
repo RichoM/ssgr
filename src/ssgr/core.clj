@@ -2,8 +2,7 @@
   (:require [babashka.fs :as fs]
             [clojure.string :as str]
             [ssgr.parser :as p]
-            [ssgr.renderer :as r]
-            [hiccup.core :as h])
+            [ssgr.renderer :as r])
   (:gen-class))
 
 (defn copy-file! [src dest]
