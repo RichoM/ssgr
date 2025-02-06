@@ -44,10 +44,14 @@
    :src src
    :alt alt})
 
-
 (defn paragraph [& lines]
   {:type ::paragraph
    :lines (vec lines)})
+
+(defn code-block [info text]
+  {:type ::code-block
+   :info info
+   :text text})
 
 (defn line [& elements]
   {:type ::line

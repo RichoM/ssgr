@@ -58,6 +58,7 @@
                    (case type
                      ; Headings are blocks already
                      ::doc/heading group
+                     ::doc/code-block group
                      ; Lines should be grouped into paragraphs
                      ::doc/line [(apply doc/paragraph group)]
                      []))))))
@@ -75,7 +76,13 @@
      :lines (pp/separated-by (pp/optional :line)
                              :newline)
      :line (pp/or :atx-heading
+                  :code-block
                   (pp/plus :inline))
+     :code-block [[(pp/max \s 3) "```"] 
+                  (pp/flatten (pp/star (any-character-except #{\newline}))) 
+                  :newline
+                  (pp/flatten (pp/plus-lazy pp/any [:newline (pp/max \s 3) "```"]))
+                  [:newline (pp/max \s 3) "```"]]
      :atx-heading [(pp/star :ws)
                    (pp/times \# 1 6)
                    (pp/plus :ws)
@@ -113,6 +120,9 @@
              (if (vector? heading-or-inline)
                (apply doc/line heading-or-inline)
                heading-or-inline))
+     :code-block (fn [[_ info-string _ text _]]
+                   (doc/code-block (str/trim info-string) 
+                                   text))
      :atx-heading (fn [[_ atx _ content]]
                     (apply doc/heading (count atx) content))
      :image (fn [[_ {:keys [text destination]}]]
@@ -134,6 +144,6 @@
   (pp/parse clojure-parser "(do @counter)")
   (parse "Prueba [a\\[\\]bc](def)")
 
-  (pp/parse (-> parser :parsers :line) "####### Title")
-  (tap> (parse "###### Title"))
+  (pp/parse (-> parser :parsers :lines) "``` python \n    3 + 4\n```")
+  (parse "``` python \n    3 + 4\n```")
   )

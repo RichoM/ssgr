@@ -58,7 +58,7 @@
 
 (comment
   
-  (-main "doc" "out")
+  (-main "test-files" "out")
   (-main "D:\\RichoM\\rescuesim\\rescuesim-intro" "out")
   )
 

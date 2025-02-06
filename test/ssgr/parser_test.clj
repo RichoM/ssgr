@@ -102,3 +102,10 @@
            1
            (d/text "Link in heading ")
            (d/link "test" "http://url.com"))))))
+
+(deftest code-blocks
+  (is (= (p/parse "``` python \n    3 + 4\n```")
+         (d/document
+          (d/code-block
+           "python"
+           "    3 + 4")))))
