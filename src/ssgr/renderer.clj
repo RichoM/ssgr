@@ -18,7 +18,7 @@
   (vec (concat [(keyword (str \h level))]
                (map render elements))))
 
-(defmethod render* ::doc/code [{:keys [form] :as el}]
+(defmethod render* ::doc/clojure [{:keys [form] :as el}]
   (try
     (let [result (e/eval-form form)]
       (if (vector? form)
@@ -48,6 +48,9 @@
   (let [rendered-lines (mapcat render lines)]
     (when (seq rendered-lines)
       (vec (concat [:p] rendered-lines)))))
+
+(defmethod render* ::doc/code-block [{:keys [info text]}]
+  [:pre [:code {:class info} text]])
 
 (defmethod render* ::doc/line [{:keys [elements]}]
   (vec (keep render elements)))

@@ -44,9 +44,9 @@
           (r/success result))
         (catch Exception _
           (r/failure (in/position stream)
-                     (str "Clojure code expected"))))
+                     "Clojure code expected")))
       (r/failure (in/position stream)
-                 (str "Literal '(' expected")))))
+                 "Literal '(' expected"))))
 
 (def clojure-parser (ClojureParser.))
 
@@ -82,7 +82,7 @@
                    (pp/star :inline)
                    (pp/star :ws)]
      :inline (pp/or :inline-but-text :text)
-     :inline-but-text (pp/or :image :link :code)
+     :inline-but-text (pp/or :image :link :clojure)
      :image [\! :link]
      :link [\[
             (pp/flatten
@@ -92,7 +92,7 @@
             (pp/flatten
              (pp/star (any-character-except #{\( \)})))
             \)]
-     :code (pp/token clojure-parser)
+     :clojure (pp/token clojure-parser)
      :text (pp/flatten (pp/or (pp/plus-lazy :char
                                             :inline-but-text)
                               (pp/plus :char)))
@@ -119,8 +119,8 @@
               (doc/image destination text))
      :link (fn [[_ text _ _ dest]]
              (doc/link text dest))
-     :code (fn [{:keys [parsed-value] :as token}]
-             (vary-meta (doc/code parsed-value)
+     :clojure (fn [{:keys [parsed-value] :as token}]
+             (vary-meta (doc/clojure parsed-value)
                         assoc :token token))
      :text doc/text
      :newline (constantly \newline)})

@@ -30,8 +30,8 @@
   {:type ::text
    :text text})
 
-(defn code [form]
-  {:type ::code
+(defn clojure [form]
+  {:type ::clojure
    :form form})
 
 (defn link [text destination]
@@ -56,8 +56,8 @@
 (defn text-line [text-content]
   (line (text text-content)))
 
-(defn code-line [form]
-  (line (code form)))
+(defn clojure-line [form]
+  (line (clojure form)))
 
 (def empty-line {:type ::empty-line})
 

@@ -43,13 +43,13 @@
 (deftest paragraph-with-code
   (is (= (p/parse "(println 3 4)\n(+ 3 4)\n\nTest")
          (d/document
-          (d/paragraph (d/code-line '(println 3 4))
-                       (d/code-line '(+ 3 4)))
+          (d/paragraph (d/clojure-line '(println 3 4))
+                       (d/clojure-line '(+ 3 4)))
           (d/paragraph (d/text-line "Test")))))
   (is (= (p/parse "(do @counter)\n[:div (+ a b)]\n\nTest")
          (d/document
-          (d/paragraph (d/code-line '(do @counter))
-                       (d/code-line '[:div (+ a b)]))
+          (d/paragraph (d/clojure-line '(do @counter))
+                       (d/clojure-line '[:div (+ a b)]))
           (d/paragraph (d/text-line "Test"))))))
 
 (deftest code-inside-heading
@@ -57,15 +57,15 @@
          (d/document
           (d/heading 1 
                      (d/text "Richo ")
-                     (d/code '(+ 3 4))
+                     (d/clojure '(+ 3 4))
                      (d/text " capo")))))
   (is (= (p/parse "# Richo (do @test) [1 2 3] capo")
          (d/document
           (d/heading 1
                      (d/text "Richo ")
-                     (d/code '(do @test))
+                     (d/clojure '(do @test))
                      (d/text " ")
-                     (d/code '[1 2 3])
+                     (d/clojure '[1 2 3])
                      (d/text " capo"))))))
 
 (deftest code-inside-text
@@ -73,15 +73,15 @@
          (d/document
           (d/paragraph
            (d/line (d/text "Richo ")
-                   (d/code '(+ 3 4))
+                   (d/clojure '(+ 3 4))
                    (d/text " capo"))))))
   (is (= (p/parse "Richo (do @test) [1 2 3] capo")
          (d/document
           (d/paragraph
            (d/line (d/text "Richo ")
-                   (d/code '(do @test))
+                   (d/clojure '(do @test))
                    (d/text " ")
-                   (d/code '[1 2 3])
+                   (d/clojure '[1 2 3])
                    (d/text " capo")))))))
 
 (deftest link
