@@ -2,7 +2,9 @@
   (:require [ssgr.doc :as doc]
             [ssgr.eval :as e]
             [hiccup.core :as h]
-            [clojure.string :as str]))
+            [hiccup.compiler :as h.c]
+            [clojure.string :as str]
+            [petitparser.token :as t]))
 
 (declare render)
 
@@ -16,8 +18,16 @@
   (vec (concat [(keyword (str \h level))]
                (map render elements))))
 
-(defmethod render* ::doc/code [{:keys [form]}]
-  (e/eval-form form))
+(defmethod render* ::doc/code [{:keys [form] :as el}]
+  (try
+    (let [result (e/eval-form form)]
+      (if (vector? form)
+        (h.c/normalize-element result)
+        result))
+    (catch Throwable _
+      (if-let [token (-> el meta :token)]
+        (render (doc/text (t/input-value token)))
+        (str form)))))
 
 (defn relative-url? [url]
   (nil? (re-find #"^(?i)(?:[a-z+]+:)?//" url)))
