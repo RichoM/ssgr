@@ -53,7 +53,9 @@
   (vec (keep render elements)))
 
 (defmethod render* ::doc/document [{:keys [blocks]}] 
-  (vec (keep render blocks)))
+  (let [rendered-blocks (keep render blocks)]
+    (when (seq rendered-blocks)
+      (vec (concat [:div] rendered-blocks)))))
 
 (defn render [element]
   (let [result (render* element)]

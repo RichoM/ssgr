@@ -21,9 +21,7 @@
     (let [text (slurp (fs/file path))
           doc (p/parse text)
           hiccup (r/render doc)
-          html (->> hiccup
-                    (map r/html)
-                    (str/join "\n"))]
+          html (r/html hiccup)]
       (write-file! out html))
     (catch Exception ex
       (println (str "ERROR processing " path) ex))))
