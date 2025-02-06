@@ -26,6 +26,12 @@
     (catch Exception ex
       (println (str "ERROR processing " path) ex))))
 
+(defn list-files [src]
+  (when-let [entries (seq (.listFiles (fs/file src)))]
+    (lazy-seq (concat (filter fs/regular-file? entries)
+                      (->> entries
+                           (filter fs/directory?)
+                           (mapcat list-files))))))
 (defn -main
   [& [src out]]
   (println "Looking for files on" src)
@@ -33,20 +39,22 @@
         out (fs/path out)]
     (fs/delete-tree out)
     (e/reset-callbacks!)
-    (doseq [path (->> (fs/glob (fs/path src) "**")
-                      (remove fs/directory?))]
-      (println)
-      (println (str "Found: " path))
-      (if (= "md" (fs/extension path))
-        (let [out-path (-> path
-                           (str/replace-first (str src) (str out))
-                           (fs/strip-ext)
-                           (str ".html"))]
-          (println out-path)
-          (process-file! path out-path))
-        (let [out-path (str/replace-first path (str src) (str out))]
-          (println out-path)
-          (copy-file! path out-path))))))
+    (let [files (list-files src)]
+      (println "Found" (count files) "files.")
+      (doseq [path files]
+      ;(println)
+      ;(println (str "Found: " path))
+        (if (= "md" (fs/extension path))
+          (let [out-path (-> path
+                             (str/replace-first (str src) (str out))
+                             (fs/strip-ext)
+                             (str ".html"))]
+          ;(println out-path)
+            (process-file! path out-path))
+          (let [out-path (str/replace-first path (str src) (str out))]
+          ;(println out-path)
+            (copy-file! path out-path))))
+      (println "DONE!"))))
 
 (comment
   
@@ -54,7 +62,14 @@
   (-main "D:\\RichoM\\rescuesim\\rescuesim-intro" "out")
   )
 
-(comment  
+(comment
   (def src "doc")
   (def out "out")
+
+  (remove fs/directory? (file-seq (fs/file src)))
+
+
+  (list-files src)
+
+
   )
