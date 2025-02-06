@@ -14,7 +14,11 @@
 
 (defn render []
   (reduce (fn [result callback]
-            (callback *element* result))
+            (try
+              (callback *element* result)
+              (catch Throwable ex
+                (println "ERROR applying render callbacks" ex)
+                result)))
           *render*
           @callbacks))
 

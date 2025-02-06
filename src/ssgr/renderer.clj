@@ -62,7 +62,11 @@
     (e/eval-render element result)))
 
 (defn html [content]
-  (h/html content))
+  (try 
+    (h/html content)
+    (catch Throwable _
+      (println "ERROR INVALID HICCUP!!" content)
+      (str "ERROR (" content ")"))))
 
 (comment
   (require '[hiccup.core :as h])
