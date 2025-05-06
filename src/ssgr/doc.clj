@@ -53,6 +53,10 @@
    :info info
    :text text})
 
+(defn blockquote-line [text]
+  {:type ::blockquote
+   :text text})
+
 (defn line [& elements]
   {:type ::line
    :elements (vec elements)})
