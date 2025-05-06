@@ -27,11 +27,12 @@
       (println (str "ERROR processing " path) ex))))
 
 (defn list-files [src]
-  (when-let [entries (seq (.listFiles (fs/file src)))]
+  (when-let [entries (sort (.listFiles (fs/file src)))]
     (lazy-seq (concat (filter fs/regular-file? entries)
                       (->> entries
                            (filter fs/directory?)
                            (mapcat list-files))))))
+
 (defn -main
   [& [src out]]
   (println "Looking for files on" src)
