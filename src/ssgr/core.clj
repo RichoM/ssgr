@@ -22,7 +22,8 @@
           doc (p/parse text)
           hiccup (r/render doc)
           html (r/html hiccup)]
-      (write-file! out html))
+      (when out 
+        (write-file! out html)))
     (catch Exception ex
       (println (str "ERROR processing " path) ex))))
 
@@ -43,18 +44,16 @@
     (let [files (list-files src)]
       (println "Found" (count files) "files.")
       (doseq [path files]
-      ;(println)
-      ;(println (str "Found: " path))
-        (if (= "md" (fs/extension path))
-          (let [out-path (-> path
-                             (str/replace-first (str src) (str out))
-                             (fs/strip-ext)
-                             (str ".html"))]
-          ;(println out-path)
-            (process-file! path out-path))
+        (case (fs/extension path)
+          "md" (let [out-path (-> path
+                                  (str/replace-first (str src) (str out))
+                                  (fs/strip-ext)
+                                  (str ".html"))]
+                 (process-file! path out-path))
+          "clj" (process-file! path nil)
           (let [out-path (str/replace-first path (str src) (str out))]
-          ;(println out-path)
-            (copy-file! path out-path))))
+            (copy-file! path out-path)))
+        )
       (println "DONE!"))))
 
 (comment
