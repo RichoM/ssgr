@@ -66,7 +66,8 @@
 
 (defn html [content]
   (try 
-    (h/html content)
+    (str "<!doctype html>"
+         (h/html content))
     (catch Throwable _
       (println "ERROR INVALID HICCUP!!" content)
       (str "ERROR (" content ")"))))
@@ -76,6 +77,8 @@
 
   (def x 5)
   (def lst '(a b c))
+  
+  
 
   (concat [:p]
           [1 2 23])
