@@ -7,14 +7,14 @@
   (:gen-class))
 
 (defn copy-file! [src dest]
-  (let [components (fs/components dest)]
-    (fs/create-dirs (apply fs/path (drop-last components)))
-    (fs/copy src dest)))
+  (when-let [parent (fs/parent dest)]
+    (fs/create-dirs parent))
+  (fs/copy src dest))
 
 (defn write-file! [path contents]
-  (let [components (fs/components path)]
-    (fs/create-dirs (apply fs/path (drop-last components)))
-    (spit (fs/file path) contents)))
+  (when-let [parent (fs/parent path)]
+    (fs/create-dirs parent))
+  (spit (fs/file path) contents))
 
 (defn process-file! [path out]
   (try
@@ -60,6 +60,11 @@
   
   (-main "test-files" "out")
   (-main "D:\\RichoM\\rescuesim\\rescuesim-intro" "out")
+  (-main "D:\\RichoM\\CV\\src" "D:\\RichoM\\CV\\out")
+
+  (def src "D:\\RichoM\\CV\\src")
+  (def out "D:\\RichoM\\CV\\out")
+  (def path (second (list-files "D:\\RichoM\\CV\\src")))
   )
 
 (comment
