@@ -1,6 +1,10 @@
 # SSGR
 
-Static Site Generator by Richo
+Static Site Generator by Richo.
+
+## Useful links
+
+Markdown reference: [https://commonmark.org/](https://commonmark.org/)
 
 ## Compilation
 
@@ -19,3 +23,9 @@ To generate an `.exe` using GraalVM native image simply run
     $ .\build.bat
 
 This will first generate the uberjar, and then call the native-image command with the appropiate parameters.
+
+## Testing
+
+To run tests automatically we're using lein test-refresh.
+
+    $ lein test-refresh :changes-only
