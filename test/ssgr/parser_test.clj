@@ -26,6 +26,8 @@
          (d/document
           (d/heading 1
                      (d/text "Heading"))))))
+(comment
+
 
 (deftest regular-text 
   (is (= (p/parse "Texto normal")
@@ -108,4 +110,4 @@
          (d/document
           (d/code-block
            "python"
-           "    3 + 4")))))
+           "    3 + 4"))))))

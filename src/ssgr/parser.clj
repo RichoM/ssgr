@@ -1,6 +1,5 @@
 (ns ssgr.parser
   (:require [clojure.string :as str]
-            [petitparser.core :as pp]
             [petitparser.input-stream :as in]
             [petitparser.results :as r]
             [edamame.core :as e]
@@ -50,100 +49,28 @@
 
 (def clojure-parser (ClojureParser.))
 
-(defn lines->blocks [lines]
-  (->> lines
-       (partition-by :type)
-       (mapcat (fn [group]
-                 (when-let [{:keys [type]} (first group)]
-                   (case type
-                     ; Headings are blocks already
-                     ::doc/heading group
-                     ::doc/code-block group
-                     ; Lines should be grouped into paragraphs
-                     ::doc/line [(apply doc/paragraph group)]
-                     []))))))
+(def regexes
+  {:atx-heading #"^\s{0,3}(#{1,6})\s(.*?)(\s#*)?$"})
 
-(defn any-character-except [exception-set]
-  (apply pp/or
-         (conj (mapv #(pp/seq \\ %) exception-set)
-               (pp/predicate #(not (contains? exception-set %))
-                             (str "Expected any character except " exception-set)))))
+(defn try-parse-atx-heading [line]
+  (when-let [[_ level text] (re-matches (regexes :atx-heading) line)]
+    (doc/heading (count level)
+                 (doc/text (str/trim text)))))
 
-(do
-  (def grammar
-    {:start :document
-     :document :lines
-     :lines (pp/separated-by (pp/optional :line)
-                             :newline)
-     :line (pp/or :atx-heading
-                  :code-block
-                  (pp/plus :inline))
-     :code-block [[(pp/max \s 3) "```"] 
-                  (pp/flatten (pp/star (any-character-except #{\newline}))) 
-                  :newline
-                  (pp/flatten (pp/plus-lazy pp/any [:newline (pp/max \s 3) "```"]))
-                  [:newline (pp/max \s 3) "```"]]
-     :atx-heading [(pp/star :ws)
-                   (pp/times \# 1 6)
-                   (pp/plus :ws)
-                   (pp/star :inline)
-                   (pp/star :ws)]
-     :inline (pp/or :inline-but-text :text)
-     :inline-but-text (pp/or :image :link :clojure)
-     :image [\! :link]
-     :link [\[
-            (pp/flatten
-             (pp/star (any-character-except #{\[ \]})))
-            \]
-            \(
-            (pp/flatten
-             (pp/star (any-character-except #{\( \)})))
-            \)]
-     :clojure (pp/token clojure-parser)
-     :text (pp/flatten (pp/or (pp/plus-lazy :char
-                                            :inline-but-text)
-                              (pp/plus :char)))
-     :ws (pp/flatten (pp/plus (pp/or \tab \space)))
-     :char (pp/predicate #(and (not= % \return)
-                               (not= % \newline))
-                         "Any char except newline")
-     :newline (pp/or "\r\n" \return \newline)})
+(defn parse-line [line]
+  (or (try-parse-atx-heading line))
+  )
 
-  (def transformations
-    {:document (fn [lines]
-                 (apply doc/document (lines->blocks lines)))
-     :lines (fn [lines]
-              (->> lines
-                   (take-nth 2)
-                   (map #(or % doc/empty-line))))
-     :line (fn [heading-or-inline]
-             (if (vector? heading-or-inline)
-               (apply doc/line heading-or-inline)
-               heading-or-inline))
-     :code-block (fn [[_ info-string _ text _]]
-                   (doc/code-block (str/trim info-string) 
-                                   text))
-     :atx-heading (fn [[_ atx _ content]]
-                    (apply doc/heading (count atx) content))
-     :image (fn [[_ {:keys [text destination]}]]
-              (doc/image destination text))
-     :link (fn [[_ text _ _ dest]]
-             (doc/link text dest))
-     :clojure (fn [{:keys [parsed-value] :as token}]
-             (vary-meta (doc/clojure parsed-value)
-                        assoc :token token))
-     :text doc/text
-     :newline (constantly \newline)})
-
-  (def parser (pp/compose grammar transformations)))
-
-(defn parse [src] (pp/parse parser src))
+(defn parse [src]
+  (apply doc/document (map parse-line (str/split-lines src))))
 
 (comment
 
-  (pp/parse clojure-parser "(do @counter)")
-  (parse "Prueba [a\\[\\]bc](def)")
+  (re-matches (regexes :atx-heading)
+              "# Título")
 
-  (pp/parse (-> parser :parsers :lines) "``` python \n    3 + 4\n```")
-  (parse "``` python \n    3 + 4\n```")
+  (def src (slurp "test-files/intro.md"))
+
+  (map parse-line (str/split-lines src))
+
   )
