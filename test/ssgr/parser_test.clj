@@ -26,14 +26,14 @@
          (d/document
           (d/heading 1
                      (d/text "Heading"))))))
-(comment
 
-
-(deftest regular-text 
+(deftest regular-text
   (is (= (p/parse "Texto normal")
          (d/document
           (d/paragraph
            (d/text-line "Texto normal"))))))
+
+(comment
 
 (deftest paragraph
   (is (= (p/parse "P1. L1\nP1. L2\n\nP2. L1")

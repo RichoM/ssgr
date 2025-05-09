@@ -57,8 +57,12 @@
     (doc/heading (count level)
                  (doc/text (str/trim text)))))
 
+(defn try-parse-text-line [line]
+  (doc/paragraph (doc/text-line line)))
+
 (defn parse-line [line]
-  (or (try-parse-atx-heading line))
+  (or (try-parse-atx-heading line)
+      (try-parse-text-line line))
   )
 
 (defn parse [src]
