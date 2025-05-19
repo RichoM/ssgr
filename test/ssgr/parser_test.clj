@@ -3,6 +3,61 @@
             [ssgr.parser :as p]
             [ssgr.doc :as d]))
 
+(deftest thematic-break
+  (is (p/thematic-break? "---"))
+  (is (p/thematic-break? "___"))
+  (is (p/thematic-break? "***"))
+  (is (p/thematic-break? " ---"))
+  (is (p/thematic-break? "   ---"))
+  (is (p/thematic-break? "   -------      \t\t\t\t"))
+  (is (not (p/thematic-break? "    ---")))
+  (is (not (p/thematic-break? "    ---*"))) 
+  (is (not (p/thematic-break? "    ----- ***"))))
+
+(deftest atx-heading
+  (is (p/atx-heading? "#"))
+  (is (p/atx-heading? "##"))
+  (is (p/atx-heading? "###"))
+  (is (p/atx-heading? "####"))
+  (is (p/atx-heading? "#####"))
+  (is (p/atx-heading? "######"))
+  (is (not (p/atx-heading? "    #")))
+  (is (not (p/atx-heading? "#Richo")))
+  (is (not (p/atx-heading? "    ----- ***"))))
+
+(deftest setext-heading-underline 
+  (is (p/setext-heading-underline? "-"))
+  (is (p/setext-heading-underline? "="))
+  (is (p/setext-heading-underline? "------   "))
+  (is (p/setext-heading-underline? "   -"))
+  (is (not (p/setext-heading-underline? "    -")))
+  (is (not (p/setext-heading-underline? "-="))))
+
+(deftest indented-code-block
+  (is (p/indented-code-block? "    a"))
+  (is (p/indented-code-block? "    a "))
+  (is (p/indented-code-block? "     Richo capo    "))
+  (is (not (p/indented-code-block? "     ")))
+  (is (not (p/indented-code-block? "   Richo"))))
+
+(deftest code-fence
+  (is (p/opening-code-fence? "```"))
+  (is (p/opening-code-fence? "````"))
+  (is (p/opening-code-fence? "~~~"))
+  (is (p/opening-code-fence? "~~~```"))
+  (is (p/opening-code-fence? "```python    [[[]]]```"))
+  (is (p/opening-code-fence? "   ```python"))
+  (is (not (p/opening-code-fence? "    ```python")))
+  (is (p/closing-code-fence? "```"))
+  (is (p/closing-code-fence? "````"))
+  (is (p/closing-code-fence? "~~~"))
+  (is (not (p/closing-code-fence? "~~~```")))
+  (is (not (p/closing-code-fence? "```python    [[[]]]```")))
+  (is (not (p/closing-code-fence? "   ```python")))
+  (is (not (p/closing-code-fence? "    ```python"))))
+
+(comment
+
 (deftest atx-heading
   (is (= (p/parse "# Heading 1")
          (d/document
@@ -32,8 +87,6 @@
          (d/document
           (d/paragraph
            (d/text-line "Texto normal"))))))
-
-(comment
 
 (deftest paragraph
   (is (= (p/parse "P1. L1\nP1. L2\n\nP2. L1")

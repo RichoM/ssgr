@@ -1,9 +1,60 @@
 (ns ssgr.parser
   (:require [clojure.string :as str]
             [petitparser.input-stream :as in]
+            [petitparser.core :as pp]
             [petitparser.results :as r]
             [edamame.core :as e]
             [ssgr.doc :as doc]))
+
+(def thematic-break (pp/end (pp/seq (pp/max pp/space 3)
+                                    (pp/or (pp/min \- 3)
+                                           (pp/min \_ 3)
+                                           (pp/min \* 3))
+                                    (pp/star pp/space))))
+
+(def atx-heading (pp/end (pp/seq (pp/max pp/space 3)
+                                 (pp/times \# 1 6)
+                                 (pp/optional (pp/seq pp/space
+                                                      (pp/plus pp/any))))))
+
+(def setext-heading-underline (pp/end (pp/seq (pp/max pp/space 3)
+                                              (pp/or (pp/plus \-)
+                                                     (pp/plus \=))
+                                              (pp/star pp/space))))
+
+(def indented-code-block (pp/end (pp/seq (pp/min pp/space 4)
+                                         (pp/plus (pp/negate pp/space))
+                                         (pp/star pp/any))))
+
+(def opening-code-fence (pp/end (pp/seq (pp/max pp/space 3)
+                                        (pp/or (pp/min \` 3)
+                                               (pp/min \~ 3))
+                                        (pp/star pp/any))))
+
+(def closing-code-fence (pp/end (pp/seq (pp/max pp/space 3)
+                                        (pp/or (pp/min \` 3)
+                                               (pp/min \~ 3))
+                                        (pp/star pp/space))))
+
+(defn thematic-break? [line]
+  (pp/matches? thematic-break line))
+
+(defn atx-heading? [line]
+  (pp/matches? atx-heading line))
+
+(defn setext-heading-underline? [line]
+  (pp/matches? setext-heading-underline line))
+
+(defn indented-code-block? [line]
+  (pp/matches? indented-code-block line))
+
+(defn opening-code-fence? [line]
+  (pp/matches? opening-code-fence line))
+
+(defn closing-code-fence? [line]
+  (pp/matches? closing-code-fence line))
+
+;;;;;;;;;;;;;;;;;;
 
 (set! *unchecked-math* :warn-on-boxed)
 (set! *warn-on-reflection* true)
