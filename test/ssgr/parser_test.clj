@@ -56,6 +56,21 @@
   (is (not (p/closing-code-fence? "   ```python")))
   (is (not (p/closing-code-fence? "    ```python"))))
 
+(deftest blank 
+  (is (p/blank? ""))
+  (is (p/blank? "\t"))
+  (is (p/blank? "   "))
+  (is (p/blank? "    "))
+  (is (not (p/blank? "asdf")))
+  (is (not (p/blank? "  asdf")))
+  (is (not (p/blank? "    asdf"))))
+
+(deftest paragraph
+  (is (p/paragraph? "Richo"))
+  (is (p/paragraph? "Richo  "))
+  (is (p/paragraph? "  Richo"))
+  (is (not (p/paragraph? "    Richo"))))
+
 (comment
 
 (deftest atx-heading

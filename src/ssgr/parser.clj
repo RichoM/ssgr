@@ -36,6 +36,12 @@
                                                (pp/min \~ 3))
                                         (pp/star pp/space))))
 
+(def blank (pp/end (pp/star pp/space)))
+
+(def paragraph (pp/end (pp/seq (pp/max pp/space 3)
+                               (pp/plus (pp/negate pp/space))
+                               (pp/star pp/any))))
+
 (defn thematic-break? [line]
   (pp/matches? thematic-break line))
 
@@ -53,6 +59,12 @@
 
 (defn closing-code-fence? [line]
   (pp/matches? closing-code-fence line))
+
+(defn blank? [line]
+  (pp/matches? blank line))
+
+(defn paragraph? [line]
+  (pp/matches? paragraph line))
 
 ;;;;;;;;;;;;;;;;;;
 
