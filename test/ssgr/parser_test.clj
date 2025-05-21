@@ -41,20 +41,13 @@
   (is (not (p/indented-code-block? "   Richo"))))
 
 (deftest code-fence
-  (is (p/opening-code-fence? "```"))
-  (is (p/opening-code-fence? "````"))
-  (is (p/opening-code-fence? "~~~"))
-  (is (p/opening-code-fence? "~~~```"))
-  (is (p/opening-code-fence? "```python    [[[]]]```"))
-  (is (p/opening-code-fence? "   ```python"))
-  (is (not (p/opening-code-fence? "    ```python")))
-  (is (p/closing-code-fence? "```"))
-  (is (p/closing-code-fence? "````"))
-  (is (p/closing-code-fence? "~~~"))
-  (is (not (p/closing-code-fence? "~~~```")))
-  (is (not (p/closing-code-fence? "```python    [[[]]]```")))
-  (is (not (p/closing-code-fence? "   ```python")))
-  (is (not (p/closing-code-fence? "    ```python"))))
+  (is (p/code-fence? "```"))
+  (is (p/code-fence? "````"))
+  (is (p/code-fence? "~~~"))
+  (is (p/code-fence? "~~~```"))
+  (is (p/code-fence? "```python    [[[]]]```"))
+  (is (p/code-fence? "   ```python"))
+  (is (not (p/code-fence? "    ```python"))))
 
 (deftest blank 
   (is (p/blank? ""))

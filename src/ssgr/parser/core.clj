@@ -54,26 +54,16 @@
      {:type ::indented-code-block
       :content inline-text})))
 
-(def opening-code-fence 
+(def code-fence 
   (transform-with-token
    (pp/end (pp/seq (pp/max pp/space 3)
                    (pp/or (pp/min \` 3)
                           (pp/min \~ 3))
                    (pp/flatten (pp/star pp/any))))
    (fn [[_ chars info-string]]
-     {:type ::opening-code-fence
+     {:type ::code-fence
       :chars chars
       :info-string info-string})))
-
-(def closing-code-fence
-  (transform-with-token
-   (pp/end (pp/seq (pp/max pp/space 3)
-                   (pp/or (pp/min \` 3)
-                          (pp/min \~ 3))
-                   (pp/star pp/space)))
-   (fn [[_ chars]]
-     {:type ::closing-code-fence
-      :chars chars})))
 
 (def blank (transform-with-token (pp/end (pp/star pp/space))
                                  (constantly {:type ::blank})))
@@ -99,11 +89,8 @@
 (defn indented-code-block? [line]
   (pp/matches? indented-code-block line))
 
-(defn opening-code-fence? [line]
-  (pp/matches? opening-code-fence line))
-
-(defn closing-code-fence? [line]
-  (pp/matches? closing-code-fence line))
+(defn code-fence? [line]
+  (pp/matches? code-fence line))
 
 (defn blank? [line]
   (pp/matches? blank line))
@@ -113,8 +100,9 @@
 
 (defn parse-line [line]
   (let [stream (in/make-stream line)
-        parsers [thematic-break atx-heading setext-heading-underline
-                 indented-code-block opening-code-fence closing-code-fence
+        parsers [thematic-break atx-heading 
+                 setext-heading-underline
+                 indented-code-block code-fence
                  blank paragraph]]
     (loop [[parser & rest] parsers]
       (let [result (pp/parse-on parser stream)]
@@ -194,6 +182,25 @@
             {:type ::code-block
              :lines @!lines})))
 
+(defn parse-fenced-code-block! [stream !blocks]
+  (let [opening (in/next! stream)
+        !lines (volatile! [])]
+    (loop []
+      (when-let [{:keys [type] :as next} (in/peek stream)]
+        (if (and (= ::code-fence type)
+                 (str/blank? (:info-string next))
+                 (= (-> opening :chars first)
+                    (-> next :chars first))
+                 (<= (-> opening :chars count)
+                     (-> next :chars count)))
+          (in/next! stream) ; Discard close fence
+          (do (vswap! !lines conj (in/next! stream))
+              (recur)))))
+    (vswap! !blocks conj
+            (doc/code-block (:info-string opening)
+                            (str/join "\n" (->> @!lines
+                                                (map #(-> % meta :token t/input-value))))))))
+
 (defn parse-block! [stream !blocks]
   (let [{:keys [type]} (in/peek stream)]
     (case type
@@ -202,7 +209,9 @@
       ::atx-heading (parse-atx-heading! stream !blocks)
       ::setext-heading-underline (parse-paragraph! stream !blocks)
       ::indented-code-block (parse-indented-code-block! stream !blocks)
-      ::blank (parse-blank-lines! stream !blocks))))
+      ::code-fence (parse-fenced-code-block! stream !blocks)
+      ::blank (parse-blank-lines! stream !blocks)
+      (throw (ex-info (str "Parse error! Type not found: " type) {})))))
 
 (defn parse-blocks [parsed-lines]
   (let [stream (in/make-stream parsed-lines)
@@ -224,13 +233,14 @@
 
 (comment
 
-  (def src (slurp "test-files/intro.md"))
-  (def parsed-lines (parse src))
+  (def src (slurp "test-files/test.md"))
+  (tap> (parse src))
 
   (tap> parsed-lines)
 
   (def stream (in/make-stream [1 2 3 4]))
 
+  (+ 3 4)
   (in/next! stream)
   
   )
