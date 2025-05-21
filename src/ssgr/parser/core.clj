@@ -146,18 +146,19 @@
           (do (vswap! !lines conj (in/next! stream))
               (recur))
 
-          ; Anything else, simply breaks the paragraph
-          (let [lines (->> @!lines
-                           (map :content)
-                           (map doc/text)
-                           ; TODO(Richo): Join lines and parse inlines
-                           )]
-            (vswap! !blocks conj
-                    (apply doc/paragraph lines))))))))
+          ; Anything else, simply breaks the paragraph, we do nothing
+          nil)))
+    (let [lines (->> @!lines
+                     (map :content)
+                     (map doc/text)
+                     ; TODO(Richo): Join lines and parse inlines
+                     )]
+      (vswap! !blocks conj
+              (apply doc/paragraph lines)))))
 
 (defn parse-thematic-break! [stream !blocks]
   (in/next! stream)
-  (vswap! !blocks conj {:type ::thematic-break}))
+  (vswap! !blocks conj (doc/thematic-break)))
 
 (defn parse-atx-heading! [stream !blocks]
   (let [{:keys [level content]} (in/next! stream)]

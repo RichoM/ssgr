@@ -102,6 +102,14 @@
           (d/heading 1
                      (d/text "Heading"))))))
 
+(deftest thematic-breaks
+  (is (= (p/parse "Texto 1\n***\nTexto 2\n___")
+         (d/document
+          (d/paragraph (d/text "Texto 1"))
+          (d/thematic-break)
+          (d/paragraph (d/text "Texto 2"))
+          (d/thematic-break)))))
+
 (comment
 
   (deftest link

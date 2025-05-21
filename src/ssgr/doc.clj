@@ -33,6 +33,9 @@
    :info info
    :text text})
 
+(defn thematic-break []
+  {:type ::thematic-break})
+
 (defn document [& blocks]
   {:type ::document
    :blocks (vec blocks)})
