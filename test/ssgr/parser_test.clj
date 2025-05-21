@@ -3,7 +3,7 @@
             [ssgr.parser.core :as p]
             [ssgr.doc :as d]))
 
-(deftest thematic-break
+(deftest thematic-break-line
   (is (p/thematic-break? "---"))
   (is (p/thematic-break? "___"))
   (is (p/thematic-break? "***"))
@@ -14,7 +14,7 @@
   (is (not (p/thematic-break? "    ---*"))) 
   (is (not (p/thematic-break? "    ----- ***"))))
 
-(deftest atx-heading
+(deftest atx-heading-line
   (is (p/atx-heading? "#"))
   (is (p/atx-heading? "##"))
   (is (p/atx-heading? "###"))
@@ -25,7 +25,7 @@
   (is (not (p/atx-heading? "#Richo")))
   (is (not (p/atx-heading? "    ----- ***"))))
 
-(deftest setext-heading-underline 
+(deftest setext-heading-underline-line
   (is (p/setext-heading-underline? "-"))
   (is (p/setext-heading-underline? "="))
   (is (p/setext-heading-underline? "------   "))
@@ -33,14 +33,14 @@
   (is (not (p/setext-heading-underline? "    -")))
   (is (not (p/setext-heading-underline? "-="))))
 
-(deftest indented-code-block
+(deftest indented-code-block-line
   (is (p/indented-code-block? "    a"))
   (is (p/indented-code-block? "    a "))
   (is (p/indented-code-block? "     Richo capo    "))
   (is (not (p/indented-code-block? "     ")))
   (is (not (p/indented-code-block? "   Richo"))))
 
-(deftest code-fence
+(deftest code-fence-line
   (is (p/code-fence? "```"))
   (is (p/code-fence? "````"))
   (is (p/code-fence? "~~~"))
@@ -49,7 +49,7 @@
   (is (p/code-fence? "   ```python"))
   (is (not (p/code-fence? "    ```python"))))
 
-(deftest blank 
+(deftest blank-line
   (is (p/blank? ""))
   (is (p/blank? "\t"))
   (is (p/blank? "   "))
@@ -58,7 +58,7 @@
   (is (not (p/blank? "  asdf")))
   (is (not (p/blank? "    asdf"))))
 
-(deftest paragraph
+(deftest paragraph-line
   (is (p/paragraph? "Richo"))
   (is (p/paragraph? "Richo  "))
   (is (p/paragraph? "  Richo"))
@@ -101,7 +101,6 @@
          (d/document
           (d/heading 1
                      (d/text "Heading"))))))
-
 
 (comment
 
