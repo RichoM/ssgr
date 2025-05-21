@@ -71,7 +71,19 @@
   (is (p/paragraph? "  Richo"))
   (is (not (p/paragraph? "    Richo"))))
 
-(comment
+
+(deftest regular-text
+  (is (= (p/parse "Texto normal")
+         (d/document
+          (d/paragraph
+           (d/text "Texto normal"))))))
+
+(deftest paragraph
+  (is (= (p/parse "P1. L1\nP1. L2\n\nP2. L1")
+         (d/document
+          (d/paragraph (d/text "P1. L1")
+                       (d/text "P1. L2"))
+          (d/paragraph (d/text "P2. L1"))))))
 
 (deftest atx-heading
   (is (= (p/parse "# Heading 1")
@@ -97,85 +109,75 @@
           (d/heading 1
                      (d/text "Heading"))))))
 
-(deftest regular-text
-  (is (= (p/parse "Texto normal")
-         (d/document
-          (d/paragraph
-           (d/text-line "Texto normal"))))))
 
-(deftest paragraph
-  (is (= (p/parse "P1. L1\nP1. L2\n\nP2. L1")
-         (d/document
-          (d/paragraph (d/text-line "P1. L1")
-                       (d/text-line "P1. L2"))
-          (d/paragraph (d/text-line "P2. L1"))))))
+(comment
 
-(deftest paragraph-with-code
-  (is (= (p/parse "(println 3 4)\n(+ 3 4)\n\nTest")
-         (d/document
-          (d/paragraph (d/clojure-line '(println 3 4))
-                       (d/clojure-line '(+ 3 4)))
-          (d/paragraph (d/text-line "Test")))))
-  (is (= (p/parse "(do @counter)\n[:div (+ a b)]\n\nTest")
-         (d/document
-          (d/paragraph (d/clojure-line '(do @counter))
-                       (d/clojure-line '[:div (+ a b)]))
-          (d/paragraph (d/text-line "Test"))))))
+  (deftest link
+    (is (= (p/parse "[test](http://url.com)")
+           (d/document
+            (d/paragraph
+             (d/link "test" "http://url.com")))))
+    (is (= (p/parse "Probando un texto con un link en la misma línea: [test](http://url.com)")
+           (d/document
+            (d/paragraph
+             (d/text "Probando un texto con un link en la misma línea: ")
+             (d/link "test" "http://url.com")))))
+    (is (= (p/parse "# Link in heading [test](http://url.com) #######")
+           (d/document
+            (d/heading
+             1
+             (d/text "Link in heading ")
+             (d/link "test" "http://url.com"))))))
 
-(deftest code-inside-heading
-  (is (= (p/parse "# Richo (+ 3 4) capo")
-         (d/document
-          (d/heading 1 
-                     (d/text "Richo ")
-                     (d/clojure '(+ 3 4))
-                     (d/text " capo")))))
-  (is (= (p/parse "# Richo (do @test) [1 2 3] capo")
-         (d/document
-          (d/heading 1
-                     (d/text "Richo ")
-                     (d/clojure '(do @test))
-                     (d/text " ")
-                     (d/clojure '[1 2 3])
-                     (d/text " capo"))))))
+  (deftest code-blocks
+    (is (= (p/parse "``` python \n    3 + 4\n```")
+           (d/document
+            (d/code-block
+             "python"
+             "    3 + 4")))))
 
-(deftest code-inside-text
-  (is (= (p/parse "Richo (+ 3 4) capo")
-         (d/document
-          (d/paragraph
-           (d/line (d/text "Richo ")
-                   (d/clojure '(+ 3 4))
-                   (d/text " capo"))))))
-  (is (= (p/parse "Richo (do @test) [1 2 3] capo")
-         (d/document
-          (d/paragraph
-           (d/line (d/text "Richo ")
-                   (d/clojure '(do @test))
-                   (d/text " ")
-                   (d/clojure '[1 2 3])
-                   (d/text " capo")))))))
+  (deftest paragraph-with-code
+    (is (= (p/parse "(println 3 4)\n(+ 3 4)\n\nTest")
+           (d/document
+            (d/paragraph (d/clojure '(println 3 4))
+                         (d/clojure '(+ 3 4)))
+            (d/paragraph (d/text "Test")))))
+    (is (= (p/parse "(do @counter)\n[:div (+ a b)]\n\nTest")
+           (d/document
+            (d/paragraph (d/clojure '(do @counter))
+                         (d/clojure '[:div (+ a b)]))
+            (d/paragraph (d/text "Test"))))))
 
-(deftest link
-  (is (= (p/parse "[test](http://url.com)")
-         (d/document
-          (d/paragraph
-           (d/line (d/link "test"
-                           "http://url.com"))))))
-  (is (= (p/parse "Probando un texto con un link en la misma línea: [test](http://url.com)")
-         (d/document
-          (d/paragraph
-           (d/line 
-            (d/text "Probando un texto con un link en la misma línea: ")
-            (d/link "test" "http://url.com"))))))
-  (is (= (p/parse "# Link in heading [test](http://url.com) #######")
-         (d/document
-          (d/heading
-           1
-           (d/text "Link in heading ")
-           (d/link "test" "http://url.com"))))))
+  (deftest code-inside-heading
+    (is (= (p/parse "# Richo (+ 3 4) capo")
+           (d/document
+            (d/heading 1
+                       (d/text "Richo ")
+                       (d/clojure '(+ 3 4))
+                       (d/text " capo")))))
+    (is (= (p/parse "# Richo (do @test) [1 2 3] capo")
+           (d/document
+            (d/heading 1
+                       (d/text "Richo ")
+                       (d/clojure '(do @test))
+                       (d/text " ")
+                       (d/clojure '[1 2 3])
+                       (d/text " capo"))))))
 
-(deftest code-blocks
-  (is (= (p/parse "``` python \n    3 + 4\n```")
-         (d/document
-          (d/code-block
-           "python"
-           "    3 + 4"))))))
+  (deftest code-inside-text
+    (is (= (p/parse "Richo (+ 3 4) capo")
+           (d/document
+            (d/paragraph
+             (d/text "Richo ")
+             (d/clojure '(+ 3 4))
+             (d/text " capo")))))
+    (is (= (p/parse "Richo (do @test) [1 2 3] capo")
+           (d/document
+            (d/paragraph
+             (d/text "Richo ")
+             (d/clojure '(do @test))
+             (d/text " ")
+             (d/clojure '[1 2 3])
+             (d/text " capo"))))))
+
+  )

@@ -49,22 +49,3 @@
                  "Literal '(' expected"))))
 
 (def clojure-parser (ClojureParser.))
-
-(def regexes
-  {:atx-heading #"^\s{0,3}(#{1,6})\s(.*?)(\s#*)?$"})
-
-(defn try-parse-atx-heading [line]
-  (when-let [[_ level text] (re-matches (regexes :atx-heading) line)]
-    (doc/heading (count level)
-                 (doc/text (str/trim text)))))
-
-(defn try-parse-text-line [line]
-  (doc/paragraph (doc/text-line line)))
-
-(defn parse-line [line]
-  (or (try-parse-atx-heading line)
-      (try-parse-text-line line))
-  )
-
-(defn parse [src]
-  (apply doc/document (map parse-line (str/split-lines src))))

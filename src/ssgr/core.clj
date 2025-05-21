@@ -1,7 +1,7 @@
 (ns ssgr.core
   (:require [babashka.fs :as fs]
             [clojure.string :as str]
-            [ssgr.parser :as p]
+            [ssgr.parser.core :as p]
             [ssgr.renderer :as r]
             [ssgr.eval :as e])
   (:gen-class))

@@ -3,7 +3,8 @@
             [petitparser.input-stream :as in]
             [petitparser.core :as pp]
             [petitparser.results :as r]
-            [petitparser.token :as t]))
+            [petitparser.token :as t]
+            [ssgr.doc :as doc]))
 
 (defn transform-with-token [p f]
   (pp/transform (pp/token p)
@@ -155,9 +156,13 @@
           (do (vswap! !lines conj (in/next! stream))
               (recur))
 
-          (vswap! !blocks conj
-                  {:type ::paragraph
-                   :lines @!lines}))))))
+          (let [lines (->> @!lines
+                           (map :content)
+                           (map doc/text)
+                           ; TODO(Richo): Join lines and parse inlines
+                           )]
+            (vswap! !blocks conj
+                    (apply doc/paragraph lines))))))))
 
 (defn parse-thematic-break! [stream !blocks]
   (in/next! stream)
@@ -166,9 +171,11 @@
 (defn parse-atx-heading! [stream !blocks]
   (let [{:keys [level content]} (in/next! stream)]
     (vswap! !blocks conj
-            {:type ::atx-heading
-             :level level
-             :content content})))
+            (apply doc/heading level 
+                   ; TODO(Richo): Parse content as inline
+                   [(doc/text (-> content
+                                  (str/replace #"^\s+" "")
+                                  (str/replace #"\s+#*\r*\n*$" "")))]))))
 
 (defn parse-blank-lines! [stream !blocks]
   (loop []
@@ -197,7 +204,7 @@
       ::indented-code-block (parse-indented-code-block! stream !blocks)
       ::blank (parse-blank-lines! stream !blocks))))
 
-(defn group-lines [parsed-lines]
+(defn parse-blocks [parsed-lines]
   (let [stream (in/make-stream parsed-lines)
         !blocks (volatile! [])]
     (loop []
@@ -212,8 +219,8 @@
                                     (vary-meta (parse-line line)
                                                assoc :line idx))
                                   input-lines)
-        groups (group-lines parsed-lines)]
-    groups))
+        blocks (parse-blocks parsed-lines)]
+    (apply doc/document blocks)))
 
 (comment
 
