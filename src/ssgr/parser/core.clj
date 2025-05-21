@@ -119,6 +119,8 @@
           (do (vswap! !lines conj (in/next! stream))
               (recur))
 
+          ; If we find setext-heading-underline, we convert the whole 
+          ; paragraph to a heading
           ::setext-heading-underline
           (let [{:keys [chars]} (in/next! stream)]
             (vswap! !blocks conj
@@ -127,8 +129,8 @@
                               2
                               1)
                      :lines @!lines}))
-          
-          ; NOTE(Richo): Thematic breaks can be confused with setext-headings, in
+
+          ; Thematic breaks can be confused with setext-headings, in
           ; which case the setext-heading takes precedence
           ::thematic-break
           (when (= \- (:chars next-line))
@@ -137,13 +139,14 @@
                     {:type ::heading
                      :level 2
                      :lines @!lines}))
-          
-          ; NOTE(Richo): Indented code blocks can't interrupt a paragraph, so if
+
+          ; Indented code blocks can't interrupt a paragraph, so if
           ; we found one we just treat it as a valid line
           ::indented-code-block
           (do (vswap! !lines conj (in/next! stream))
               (recur))
 
+          ; Anything else, simply breaks the paragraph
           (let [lines (->> @!lines
                            (map :content)
                            (map doc/text)
@@ -165,7 +168,7 @@
                                   (str/replace #"^\s+" "")
                                   (str/replace #"\s+#*\r*\n*$" "")))]))))
 
-(defn parse-blank-lines! [stream !blocks]
+(defn parse-blank-lines! [stream _]
   (loop []
     (when (= ::blank (:type (in/peek stream)))
       (in/next! stream)
