@@ -6,68 +6,6 @@
             [edamame.core :as e]
             [ssgr.doc :as doc]))
 
-(def thematic-break (pp/end (pp/seq (pp/max pp/space 3)
-                                    (pp/or (pp/min \- 3)
-                                           (pp/min \_ 3)
-                                           (pp/min \* 3))
-                                    (pp/star pp/space))))
-
-(def atx-heading (pp/end (pp/seq (pp/max pp/space 3)
-                                 (pp/times \# 1 6)
-                                 (pp/optional (pp/seq pp/space
-                                                      (pp/plus pp/any))))))
-
-(def setext-heading-underline (pp/end (pp/seq (pp/max pp/space 3)
-                                              (pp/or (pp/plus \-)
-                                                     (pp/plus \=))
-                                              (pp/star pp/space))))
-
-(def indented-code-block (pp/end (pp/seq (pp/min pp/space 4)
-                                         (pp/plus (pp/negate pp/space))
-                                         (pp/star pp/any))))
-
-(def opening-code-fence (pp/end (pp/seq (pp/max pp/space 3)
-                                        (pp/or (pp/min \` 3)
-                                               (pp/min \~ 3))
-                                        (pp/star pp/any))))
-
-(def closing-code-fence (pp/end (pp/seq (pp/max pp/space 3)
-                                        (pp/or (pp/min \` 3)
-                                               (pp/min \~ 3))
-                                        (pp/star pp/space))))
-
-(def blank (pp/end (pp/star pp/space)))
-
-(def paragraph (pp/end (pp/seq (pp/max pp/space 3)
-                               (pp/plus (pp/negate pp/space))
-                               (pp/star pp/any))))
-
-(defn thematic-break? [line]
-  (pp/matches? thematic-break line))
-
-(defn atx-heading? [line]
-  (pp/matches? atx-heading line))
-
-(defn setext-heading-underline? [line]
-  (pp/matches? setext-heading-underline line))
-
-(defn indented-code-block? [line]
-  (pp/matches? indented-code-block line))
-
-(defn opening-code-fence? [line]
-  (pp/matches? opening-code-fence line))
-
-(defn closing-code-fence? [line]
-  (pp/matches? closing-code-fence line))
-
-(defn blank? [line]
-  (pp/matches? blank line))
-
-(defn paragraph? [line]
-  (pp/matches? paragraph line))
-
-;;;;;;;;;;;;;;;;;;
-
 (set! *unchecked-math* :warn-on-boxed)
 (set! *warn-on-reflection* true)
 
@@ -130,14 +68,3 @@
 
 (defn parse [src]
   (apply doc/document (map parse-line (str/split-lines src))))
-
-(comment
-
-  (re-matches (regexes :atx-heading)
-              "# Título")
-
-  (def src (slurp "test-files/intro.md"))
-
-  (map parse-line (str/split-lines src))
-
-  )

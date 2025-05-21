@@ -1,6 +1,6 @@
 (ns ssgr.parser-test
   (:require [clojure.test :refer [deftest testing is]]
-            [ssgr.parser :as p]
+            [ssgr.parser.core :as p]
             [ssgr.doc :as d]))
 
 (deftest thematic-break
