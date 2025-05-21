@@ -222,8 +222,16 @@
         (recur)))
     @!blocks))
 
+(def line-parser
+  (let [newline (pp/or "\r\n" \return \newline)]
+    (pp/separated-by (pp/flatten (pp/star (pp/negate newline)))
+                     newline)))
+
+(defn split-lines [src]
+  (take-nth 2 (pp/parse line-parser src)))
+
 (defn parse [src]
-  (let [input-lines (str/split-lines src)
+  (let [input-lines (split-lines src)
         parsed-lines (map-indexed (fn [idx line]
                                     (vary-meta (parse-line line)
                                                assoc :line idx))
