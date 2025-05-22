@@ -148,27 +148,41 @@
          (d/document
           (d/paragraph (d/code-span " `` "))))))
 
+(deftest link
+  (is (= (p/parse "[test](http://url.com)")
+         (d/document
+          (d/paragraph
+           (d/link [(d/text "test")] "http://url.com")))))
+  (is (= (p/parse "[link con `código` adentro](http://url.com)")
+         (d/document
+          (d/paragraph
+           (d/link [(d/text "link con ")
+                    (d/code-span "código")
+                    (d/text " adentro")] 
+                   "http://url.com")))))
+  (is (= (p/parse "Probando un texto con un link en la misma línea: [test](http://url.com)")
+         (d/document
+          (d/paragraph
+           (d/text "Probando un texto con un link en la misma línea: ")
+           (d/link [(d/text "test")] "http://url.com")))))
+  (is (= (p/parse "# Link in heading [test](http://url.com) #######")
+         (d/document
+          (d/heading
+           1
+           (d/text "Link in heading ")
+           (d/link [(d/text "test")] "http://url.com")))))
+  (is (= (p/parse "[invalid[link](test)")
+         (d/document
+          (d/paragraph
+           (d/text "[invalid")
+           (d/link [(d/text "link")] "test"))))))
+
 (comment
+  
+  (p/parse "(+ 3 4)")
   (tap> *1)
 
-  (deftest link
-    (is (= (p/parse "[test](http://url.com)")
-           (d/document
-            (d/paragraph
-             (d/link "test" "http://url.com")))))
-    (is (= (p/parse "Probando un texto con un link en la misma línea: [test](http://url.com)")
-           (d/document
-            (d/paragraph
-             (d/text "Probando un texto con un link en la misma línea: ")
-             (d/link "test" "http://url.com")))))
-    (is (= (p/parse "# Link in heading [test](http://url.com) #######")
-           (d/document
-            (d/heading
-             1
-             (d/text "Link in heading ")
-             (d/link "test" "http://url.com"))))))
-
-
+  
   (deftest paragraph-with-code
     (is (= (p/parse "(println 3 4)\n(+ 3 4)\n\nTest")
            (d/document

@@ -130,87 +130,186 @@
     (when (= char next)
       (in/next! stream))))
 
-(defn parse-code-span! [stream !elements]
-  (let [begin-pos (in/position stream)
-        opening (consume-chars! stream \`)
-        [content closing]
-        (loop [content []]
-          (let [next-char (in/peek stream)]
-            (case next-char
+(defn parse-code-span! [stream]
+  (when (= \` (in/peek stream))
+    (let [begin-pos (in/position stream)
+          opening (consume-chars! stream \`)
+          [content closing]
+          (loop [content []]
+            (let [next-char (in/peek stream)]
+              (case next-char
               ; The closing and opening must be of equal length
-              \` (let [closing (consume-chars! stream \`)]
-                   (if (= (count closing)
-                          (count opening))
-                     [content closing]
-                     (recur (apply conj content closing))))
+                \` (let [closing (consume-chars! stream \`)]
+                     (if (= (count closing)
+                            (count opening))
+                       [content closing]
+                       (recur (apply conj content closing))))
 
               ; Line endings are converted to spaces
-              \newline (do (in/next! stream) ; Discard
-                           (recur (conj content \space)))
-              \return (do (in/next! stream) ; Discard
-                          (consume-1-char! stream \newline)
-                          (recur (conj content \space)))
+                \newline (do (in/next! stream) ; Discard
+                             (recur (conj content \space)))
+                \return (do (in/next! stream) ; Discard
+                            (consume-1-char! stream \newline)
+                            (recur (conj content \space)))
 
               ; Anything else is appended to the content
-              (if next-char
-                (recur (conj content (in/next! stream)))
-                [content nil]))))
-        end-pos (in/position stream)
-        token (t/make-token (in/source stream)
-                            begin-pos
-                            (- end-pos begin-pos)
-                            [opening content closing])]
-    (vswap! !elements conj 
-            (vary-meta (if closing
-                         (doc/code-span (let [text (str/join content)]
-                                          ; If the resulting string both begins and ends 
-                                          ; with a space character, but does not consist 
-                                          ; entirely of space characters, a single space 
-                                          ; character is removed from the front and back
-                                          (if (and (str/starts-with? text " ")
-                                                   (str/ends-with? text " ")
-                                                   (not (str/blank? text)))
-                                            (subs text 1 (dec (count text)))
-                                            text)))
-                         (doc/text (t/input-value token)))
-                       assoc :token token))))
+                (if next-char
+                  (recur (conj content (in/next! stream)))
+                  [content nil]))))
+          end-pos (in/position stream)
+          token (t/make-token (in/source stream)
+                              begin-pos
+                              (- end-pos begin-pos)
+                              [opening content closing])]
+      (vary-meta (if closing
+                   (doc/code-span (let [text (str/join content)]
+                                   ; If the resulting string both begins and ends 
+                                   ; with a space character, but does not consist 
+                                   ; entirely of space characters, a single space 
+                                   ; character is removed from the front and back
+                                    (if (and (str/starts-with? text " ")
+                                             (str/ends-with? text " ")
+                                             (not (str/blank? text)))
+                                      (subs text 1 (dec (count text)))
+                                      text)))
+                   (doc/text (t/input-value token)))
+                 assoc :token token))))
 
-(defn parse-text! [stream !elements]
+(declare parse-inlines)
+
+(defn parse-link-text! [stream]
+  (when (= \[ (in/peek stream))
+    (let [[content closed?]
+          (loop [bracket-count 0
+                 prev-char (in/next! stream)
+                 content []]
+            (let [next-char (in/peek stream)]
+              (case next-char
+                \\ (recur bracket-count
+                          (in/next! stream)
+                          content)
+                \[ (recur (if (= \\ prev-char)
+                            bracket-count
+                            (inc bracket-count))
+                          (in/next! stream)
+                          (conj content next-char))
+                \] (if (= \\ prev-char)
+                     (recur bracket-count
+                            (in/next! stream)
+                            (conj content next-char))
+                     (if (zero? bracket-count)
+                       (do (in/next! stream)
+                           [content true])
+                       (recur (dec bracket-count)
+                              (in/next! stream)
+                              (conj content next-char))))
+                nil [content false]
+                (recur bracket-count
+                       (in/next! stream)
+                       (conj content next-char)))))]
+      (when closed?
+        (parse-inlines (str/join content)
+                       :allow-links? false)))))
+
+(defn parse-link-destination! [stream]
+  (when (= \( (in/peek stream))
+    (let [[content closed?]
+          (loop [bracket-count 0
+                 prev-char (in/next! stream)
+                 content []]
+            (let [next-char (in/peek stream)]
+              (case next-char
+                \\ (recur bracket-count
+                          (in/next! stream)
+                          content)
+                \( (recur (if (= \\ prev-char)
+                            bracket-count
+                            (inc bracket-count))
+                          (in/next! stream)
+                          (conj content next-char))
+                \) (if (= \\ prev-char)
+                     (recur bracket-count
+                            (in/next! stream)
+                            (conj content next-char))
+                     (if (zero? bracket-count)
+                       (do (in/next! stream)
+                           [content true])
+                       (recur (dec bracket-count)
+                              (in/next! stream)
+                              (conj content next-char))))
+                nil [content false]
+                (recur bracket-count
+                       (in/next! stream)
+                       (conj content next-char)))))]
+      (when closed? (str/join content)))))
+
+(defn parse-link! [stream]
   (let [begin-pos (in/position stream)
-        content (consume-until! stream #{\`})
+        link-text (parse-link-text! stream)
+        link-destination (parse-link-destination! stream)
         end-pos (in/position stream)]
-    (vswap! !elements conj
-            (vary-meta (doc/text (str/join content))
-                       assoc :token (t/make-token (in/source stream)
-                                                  begin-pos
-                                                  (- end-pos begin-pos)
-                                                  content)))))
-
-(defn parse-inlines [src]
-  (let [stream (in/make-stream src)
-        !elements (volatile! [])]
-    (loop []
-      (when-let [next-char (in/peek stream)]
-        (case next-char
-          \` (parse-code-span! stream !elements)
-          (parse-text! stream !elements))
-        (recur)))
-    @!elements))
+    (if (and link-text link-destination)
+      (vary-meta (doc/link link-text link-destination)
+                 assoc :token (t/make-token (in/source stream)
+                                            begin-pos
+                                            (- end-pos begin-pos)
+                                            [link-text link-destination]))
+      (do (in/reset-position! stream begin-pos)
+          nil))))
 
 (comment
 
-  (do (def src "``foo``")
-      (def stream (in/make-stream src)))
-
-  (consume-1-char! stream \`)
-  (consume-chars! stream \`)
+  (def src "[foo]")
+  (def stream (in/make-stream src))
+  (parse-link-text! stream)
   (in/peek stream)
 
-  (parse-inlines src)
 
+  (def src "(bar)")
+  (parse-link-destination! (in/make-stream src))
+
+  (def src "[foo`baz`](bar)")
+  (def stream (in/make-stream src))
+  (parse-link! stream)
+
+  (in/end? stream)
   (tap> *1)
-
+  
   )
+
+(defn parse-inlines 
+  [src & {:keys [allow-links?] :or {allow-links? true}}]
+  (let [stream (in/make-stream src)
+        close-text (fn [text-begin text-end]
+                     (let [text-token (when text-begin
+                                        (t/make-token (in/source stream)
+                                                      text-begin
+                                                      (- text-end text-begin)
+                                                      nil))]
+                       (when text-token
+                         (vary-meta (doc/text (t/input-value text-token))
+                                    assoc :token text-token))))]
+    (loop [elements []
+           text-begin nil]
+      (if-not (in/end? stream)
+        (let [text-end (in/position stream)
+              element (or 
+                       (parse-code-span! stream)
+                          (when allow-links? (parse-link! stream)))]
+          (if element
+            (let [text-element (close-text text-begin text-end)]
+              (recur (if text-element
+                       (-> elements
+                           (conj text-element)
+                           (conj element))
+                       (-> elements
+                           (conj element)))
+                     nil))
+            (do (in/next! stream)
+                (recur elements (or text-begin text-end)))))
+        (if text-begin
+          (conj elements (close-text text-begin (in/position stream)))
+          elements)))))
 
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -246,8 +345,9 @@
                                                     1)
                                       (->> @!lines
                                            (map :content)
-                                           (map trim-heading) ; TODO(Richo): Parse inlines!
-                                           (map doc/text)))
+                                           (map trim-heading)
+                                           (str/join "\n")
+                                           (parse-inlines)))
                                assoc :lines (conj @!lines next-line))))
 
           ; Thematic breaks can be confused with setext-headings, in
@@ -282,8 +382,7 @@
   (let [{:keys [level content] :as line} (in/next! stream)]
     (vswap! !blocks conj
             (vary-meta (apply doc/heading level
-                              ; TODO(Richo): Parse content as inline
-                              [(doc/text (trim-heading content))])
+                              (parse-inlines (trim-heading content)))
                        assoc :lines [line]))))
 
 (defn parse-blank-lines! [stream _]
@@ -379,8 +478,6 @@
 
   (def src (slurp "test-files/test.md"))
   (tap> (parse src))
-
-  (tap> parsed-lines)
 
   (def stream (in/make-stream [1 2 3 4]))
 
