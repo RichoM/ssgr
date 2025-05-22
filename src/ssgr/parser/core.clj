@@ -12,7 +12,7 @@
                   (vary-meta (f (t/parsed-value token))
                              assoc :token token))))
 
-(def thematic-break 
+(def thematic-break
   (transform-with-token
    (pp/end (pp/seq (pp/max pp/space 3)
                    (pp/or (pp/min \- 3)
@@ -23,7 +23,7 @@
      {:type ::thematic-break
       :chars chars})))
 
-(def atx-heading 
+(def atx-heading
   (transform-with-token
    (pp/end (pp/seq (pp/max pp/space 3)
                    (pp/times \# 1 6)
@@ -45,7 +45,7 @@
      {:type ::setext-heading-underline
       :chars chars})))
 
-(def indented-code-block 
+(def indented-code-block
   (transform-with-token
    (pp/end (pp/flatten (pp/seq (pp/min pp/space 4)
                                (pp/plus (pp/negate pp/space))
@@ -54,7 +54,7 @@
      {:type ::indented-code-block
       :content inline-text})))
 
-(def code-fence 
+(def code-fence
   (transform-with-token
    (pp/end (pp/seq (pp/max pp/space 3)
                    (pp/or (pp/min \` 3)
@@ -100,7 +100,7 @@
 
 (defn parse-line [line]
   (let [stream (in/make-stream line)
-        parsers [thematic-break atx-heading 
+        parsers [thematic-break atx-heading
                  setext-heading-underline
                  indented-code-block code-fence
                  blank paragraph]]
@@ -119,11 +119,11 @@
   (let [!lines (volatile! [])
         close-paragraph! #(let [lines (->> @!lines
                                            (map :content)
-                                           (map doc/text)
-                             ; TODO(Richo): Join lines and parse inlines
+                                           (map doc/text) ; TODO(Richo): Join lines and parse inlines
                                            )]
                             (vswap! !blocks conj
-                                    (apply doc/paragraph lines)))]
+                                    (vary-meta (apply doc/paragraph lines)
+                                               assoc :lines @!lines)))]
     (loop []
       (let [{:keys [type] :as next-line} (in/peek stream)]
         (case type
@@ -136,13 +136,14 @@
           ::setext-heading-underline
           (let [{:keys [chars]} (in/next! stream)]
             (vswap! !blocks conj
-                    (apply doc/heading (if (= \- (first chars))
-                                         2
-                                         1)
-                           (->> @!lines
-                                (map :content)
-                                (map trim-heading) ; TODO(Richo): Parse inlines!
-                                (map doc/text)))))
+                    (vary-meta (apply doc/heading (if (= \- (first chars))
+                                                    2
+                                                    1)
+                                      (->> @!lines
+                                           (map :content)
+                                           (map trim-heading) ; TODO(Richo): Parse inlines!
+                                           (map doc/text)))
+                               assoc :lines (conj @!lines next-line))))
 
           ; Thematic breaks can be confused with setext-headings, in
           ; which case the setext-heading takes precedence
@@ -150,11 +151,12 @@
           (if (= \- (first (:chars next-line)))
             (do (in/next! stream) ; discard next
                 (vswap! !blocks conj
-                        (apply doc/heading 2
-                               (->> @!lines
-                                    (map :content)
-                                    (map trim-heading) ; TODO(Richo): Parse inlines!
-                                    (map doc/text)))))
+                        (vary-meta (apply doc/heading 2
+                                          (->> @!lines
+                                               (map :content)
+                                               (map trim-heading) ; TODO(Richo): Parse inlines!
+                                               (map doc/text)))
+                                   assoc :lines (conj @!lines next-line))))
             (close-paragraph!))
 
           ; Indented code blocks can't interrupt a paragraph, so if
@@ -167,15 +169,17 @@
           (close-paragraph!))))))
 
 (defn parse-thematic-break! [stream !blocks]
-  (in/next! stream)
-  (vswap! !blocks conj (doc/thematic-break)))
+  (let [line (in/next! stream)]
+    (vswap! !blocks conj (vary-meta (doc/thematic-break)
+                                    assoc :lines [line]))))
 
 (defn parse-atx-heading! [stream !blocks]
-  (let [{:keys [level content]} (in/next! stream)]
+  (let [{:keys [level content] :as line} (in/next! stream)]
     (vswap! !blocks conj
-            (apply doc/heading level 
-                   ; TODO(Richo): Parse content as inline
-                   [(doc/text (trim-heading content))]))))
+            (vary-meta (apply doc/heading level
+                              ; TODO(Richo): Parse content as inline
+                              [(doc/text (trim-heading content))])
+                       assoc :lines [line]))))
 
 (defn parse-blank-lines! [stream _]
   (loop []
@@ -190,7 +194,7 @@
         (when (= ::indented-code-block type)
           (vswap! !lines conj (in/next! stream))
           (recur))))
-    
+
     ; NOTE(Richo): We take the actual lines from the tokens because
     ; the code blocks should preserve whatever the user typed. 
     ; However, since we're parsing an indented block code we, first
@@ -198,30 +202,35 @@
     (let [lines (map #(-> % meta :token t/input-value (subs 4))
                      @!lines)]
       (vswap! !blocks conj
-              (doc/code-block "" (str/join "\n" lines))))))
+              (vary-meta (doc/code-block "" (str/join "\n" lines))
+                         assoc :lines @!lines)))))
 
 (defn parse-fenced-code-block! [stream !blocks]
   (let [opening (in/next! stream)
         !lines (volatile! [])]
     (loop []
       (when-let [{:keys [type] :as next} (in/peek stream)]
-        (if (and (= ::code-fence type)
-                 (str/blank? (:info-string next))
-                 (= (-> opening :chars first)
-                    (-> next :chars first))
-                 (<= (-> opening :chars count)
-                     (-> next :chars count)))
-          (in/next! stream) ; Discard close fence
-          (do (vswap! !lines conj (in/next! stream))
-              (recur)))))
-    
+        (when-not (and (= ::code-fence type)
+                       (str/blank? (:info-string next))
+                       (= (-> opening :chars first)
+                          (-> next :chars first))
+                       (<= (-> opening :chars count)
+                           (-> next :chars count)))
+          (vswap! !lines conj (in/next! stream))
+          (recur))))
+
     ; NOTE(Richo): We take the actual lines from the tokens because
     ; the code blocks should preserve whatever the user typed
-    (let [lines (map #(-> % meta :token t/input-value)
-                     @!lines)]
+    (let [closing (in/next! stream) ; Discard close fence (if any)
+          content-lines (map #(-> % meta :token t/input-value)
+                             @!lines)]
       (vswap! !blocks conj
-              (doc/code-block (str/trim (:info-string opening))
-                              (str/join "\n" lines))))))
+              (vary-meta (doc/code-block (str/trim (:info-string opening))
+                                         (str/join "\n" content-lines))
+                         assoc :lines (let [lines (vec (cons opening @!lines))]
+                                        (if closing
+                                          (conj lines closing)
+                                          lines)))))))
 
 (defn parse-block! [stream !blocks]
   (let [{:keys [type]} (in/peek stream)]
@@ -271,6 +280,4 @@
   (def stream (in/make-stream [1 2 3 4]))
 
   (+ 3 4)
-  (in/next! stream)
-  
-  )
+  (in/next! stream))
