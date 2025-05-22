@@ -110,6 +110,12 @@
           (d/paragraph (d/text "Texto 2"))
           (d/thematic-break)))))
 
+(deftest setext-headings
+  (is (= (p/parse "Texto 1\n=\nTexto 2\n---")
+         (d/document
+          (d/heading 1 (d/text "Texto 1"))
+          (d/heading 2 (d/text "Texto 2"))))))
+
 (comment
 
   (deftest link

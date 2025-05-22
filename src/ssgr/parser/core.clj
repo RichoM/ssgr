@@ -110,8 +110,20 @@
           (when rest (recur rest))
           (r/actual-result result))))))
 
+(defn trim-heading [content]
+  (-> content
+      (str/replace #"^\s+" "")
+      (str/replace #"\s+#*\r*\n*$" "")))
+
 (defn parse-paragraph! [stream !blocks]
-  (let [!lines (volatile! [])]
+  (let [!lines (volatile! [])
+        close-paragraph! #(let [lines (->> @!lines
+                                           (map :content)
+                                           (map doc/text)
+                             ; TODO(Richo): Join lines and parse inlines
+                                           )]
+                            (vswap! !blocks conj
+                                    (apply doc/paragraph lines)))]
     (loop []
       (let [{:keys [type] :as next-line} (in/peek stream)]
         (case type
@@ -124,21 +136,26 @@
           ::setext-heading-underline
           (let [{:keys [chars]} (in/next! stream)]
             (vswap! !blocks conj
-                    {:type ::heading
-                     :level (if (= \- (first chars))
-                              2
-                              1)
-                     :lines @!lines}))
+                    (apply doc/heading (if (= \- (first chars))
+                                         2
+                                         1)
+                           (->> @!lines
+                                (map :content)
+                                (map trim-heading) ; TODO(Richo): Parse inlines!
+                                (map doc/text)))))
 
           ; Thematic breaks can be confused with setext-headings, in
           ; which case the setext-heading takes precedence
           ::thematic-break
-          (when (= \- (:chars next-line))
-            (in/next! stream) ; discard next
-            (vswap! !blocks conj
-                    {:type ::heading
-                     :level 2
-                     :lines @!lines}))
+          (if (= \- (first (:chars next-line)))
+            (do (in/next! stream) ; discard next
+                (vswap! !blocks conj
+                        (apply doc/heading 2
+                               (->> @!lines
+                                    (map :content)
+                                    (map trim-heading) ; TODO(Richo): Parse inlines!
+                                    (map doc/text)))))
+            (close-paragraph!))
 
           ; Indented code blocks can't interrupt a paragraph, so if
           ; we found one we just treat it as a valid line
@@ -147,14 +164,7 @@
               (recur))
 
           ; Anything else, simply breaks the paragraph, we do nothing
-          nil)))
-    (let [lines (->> @!lines
-                     (map :content)
-                     (map doc/text)
-                     ; TODO(Richo): Join lines and parse inlines
-                     )]
-      (vswap! !blocks conj
-              (apply doc/paragraph lines)))))
+          (close-paragraph!))))))
 
 (defn parse-thematic-break! [stream !blocks]
   (in/next! stream)
@@ -165,9 +175,7 @@
     (vswap! !blocks conj
             (apply doc/heading level 
                    ; TODO(Richo): Parse content as inline
-                   [(doc/text (-> content
-                                  (str/replace #"^\s+" "")
-                                  (str/replace #"\s+#*\r*\n*$" "")))]))))
+                   [(doc/text (trim-heading content))]))))
 
 (defn parse-blank-lines! [stream _]
   (loop []
