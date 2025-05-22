@@ -190,9 +190,15 @@
         (when (= ::indented-code-block type)
           (vswap! !lines conj (in/next! stream))
           (recur))))
-    (vswap! !blocks conj 
-            {:type ::code-block
-             :lines @!lines})))
+    
+    ; NOTE(Richo): We take the actual lines from the tokens because
+    ; the code blocks should preserve whatever the user typed. 
+    ; However, since we're parsing an indented block code we, first
+    ; need to remove the first 4 indentation spaces.
+    (let [lines (map #(-> % meta :token t/input-value (subs 4))
+                     @!lines)]
+      (vswap! !blocks conj
+              (doc/code-block "" (str/join "\n" lines))))))
 
 (defn parse-fenced-code-block! [stream !blocks]
   (let [opening (in/next! stream)
@@ -208,10 +214,14 @@
           (in/next! stream) ; Discard close fence
           (do (vswap! !lines conj (in/next! stream))
               (recur)))))
-    (vswap! !blocks conj
-            (doc/code-block (:info-string opening)
-                            (str/join "\n" (->> @!lines
-                                                (map #(-> % meta :token t/input-value))))))))
+    
+    ; NOTE(Richo): We take the actual lines from the tokens because
+    ; the code blocks should preserve whatever the user typed
+    (let [lines (map #(-> % meta :token t/input-value)
+                     @!lines)]
+      (vswap! !blocks conj
+              (doc/code-block (str/trim (:info-string opening))
+                              (str/join "\n" lines))))))
 
 (defn parse-block! [stream !blocks]
   (let [{:keys [type]} (in/peek stream)]

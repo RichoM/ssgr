@@ -11,7 +11,7 @@
   (is (p/thematic-break? "   ---"))
   (is (p/thematic-break? "   -------      \t\t\t\t"))
   (is (not (p/thematic-break? "    ---")))
-  (is (not (p/thematic-break? "    ---*"))) 
+  (is (not (p/thematic-break? "    ---*")))
   (is (not (p/thematic-break? "    ----- ***"))))
 
 (deftest atx-heading-line
@@ -116,7 +116,21 @@
           (d/heading 1 (d/text "Texto 1"))
           (d/heading 2 (d/text "Texto 2"))))))
 
+(deftest fenced-code-blocks
+  (is (= (p/parse "``` python \n    3 + 4\n```")
+         (d/document
+          (d/code-block
+           "python"
+           "    3 + 4")))))
+
+(deftest indented-code-blocks
+  (is (= (p/parse "    var a := 3 + 4;\n    print(a);")
+         (d/document
+          (d/code-block ""
+           "var a := 3 + 4;\nprint(a);")))))
+
 (comment
+  (tap> *1)
 
   (deftest link
     (is (= (p/parse "[test](http://url.com)")
@@ -135,12 +149,6 @@
              (d/text "Link in heading ")
              (d/link "test" "http://url.com"))))))
 
-  (deftest code-blocks
-    (is (= (p/parse "``` python \n    3 + 4\n```")
-           (d/document
-            (d/code-block
-             "python"
-             "    3 + 4")))))
 
   (deftest paragraph-with-code
     (is (= (p/parse "(println 3 4)\n(+ 3 4)\n\nTest")
@@ -184,6 +192,4 @@
              (d/clojure '(do @test))
              (d/text " ")
              (d/clojure '[1 2 3])
-             (d/text " capo"))))))
-
-  )
+             (d/text " capo")))))))
