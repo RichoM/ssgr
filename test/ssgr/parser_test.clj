@@ -140,7 +140,13 @@
           (d/paragraph (d/code-span "foo`bar")))))
   (is (= (p/parse "``foo`") ; The backticks don't match so it's just text
          (d/document
-          (d/paragraph (d/text "``foo`"))))))
+          (d/paragraph (d/text "``foo`")))))
+  (is (= (p/parse "`` foo ` bar ``")
+         (d/document
+          (d/paragraph (d/code-span "foo ` bar")))))
+  (is (= (p/parse "`  ``  `")
+         (d/document
+          (d/paragraph (d/code-span " `` "))))))
 
 (comment
   (tap> *1)

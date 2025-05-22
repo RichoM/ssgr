@@ -162,7 +162,16 @@
                             [opening content closing])]
     (vswap! !elements conj 
             (vary-meta (if closing
-                         (doc/code-span (str/join content))
+                         (doc/code-span (let [text (str/join content)]
+                                          ; If the resulting string both begins and ends 
+                                          ; with a space character, but does not consist 
+                                          ; entirely of space characters, a single space 
+                                          ; character is removed from the front and back
+                                          (if (and (str/starts-with? text " ")
+                                                   (str/ends-with? text " ")
+                                                   (not (str/blank? text)))
+                                            (subs text 1 (dec (count text)))
+                                            text)))
                          (doc/text (t/input-value token)))
                        assoc :token token))))
 
