@@ -110,6 +110,102 @@
           (when rest (recur rest))
           (r/actual-result result))))))
 
+;;; Inline parsers
+
+(defn consume-while! [stream while-fn]
+  (loop [result []]
+    (let [chr (in/peek stream)]
+      (if (and chr (while-fn chr))
+        (recur (conj result (in/next! stream)))
+        result))))
+
+(defn consume-until! [stream until-fn]
+  (consume-while! stream (complement until-fn)))
+
+(defn consume-chars! [stream & chars]
+  (consume-while! stream (set chars)))
+
+(defn consume-1-char! [stream char]
+  (let [next (in/peek stream)]
+    (when (= char next)
+      (in/next! stream))))
+
+(defn parse-code-span! [stream !elements]
+  (let [begin-pos (in/position stream)
+        opening (consume-chars! stream \`)
+        [content closing]
+        (loop [content []]
+          (let [next-char (in/peek stream)]
+            (case next-char
+              ; The closing and opening must be of equal length
+              \` (let [closing (consume-chars! stream \`)]
+                   (if (= (count closing)
+                          (count opening))
+                     [content closing]
+                     (recur (apply conj content closing))))
+
+              ; Line endings are converted to spaces
+              \newline (do (in/next! stream) ; Discard
+                           (recur (conj content \space)))
+              \return (do (in/next! stream) ; Discard
+                          (consume-1-char! stream \newline)
+                          (recur (conj content \space)))
+
+              ; Anything else is appended to the content
+              (if next-char
+                (recur (conj content (in/next! stream)))
+                [content nil]))))
+        end-pos (in/position stream)
+        token (t/make-token (in/source stream)
+                            begin-pos
+                            (- end-pos begin-pos)
+                            [opening content closing])]
+    (vswap! !elements conj 
+            (vary-meta (if closing
+                         (doc/code-span (str/join content))
+                         (doc/text (t/input-value token)))
+                       assoc :token token))))
+
+(defn parse-text! [stream !elements]
+  (let [begin-pos (in/position stream)
+        content (consume-until! stream #{\`})
+        end-pos (in/position stream)]
+    (vswap! !elements conj
+            (vary-meta (doc/text (str/join content))
+                       assoc :token (t/make-token (in/source stream)
+                                                  begin-pos
+                                                  (- end-pos begin-pos)
+                                                  content)))))
+
+(defn parse-inlines [src]
+  (let [stream (in/make-stream src)
+        !elements (volatile! [])]
+    (loop []
+      (when-let [next-char (in/peek stream)]
+        (case next-char
+          \` (parse-code-span! stream !elements)
+          (parse-text! stream !elements))
+        (recur)))
+    @!elements))
+
+(comment
+
+  (do (def src "``foo``")
+      (def stream (in/make-stream src)))
+
+  (consume-1-char! stream \`)
+  (consume-chars! stream \`)
+  (in/peek stream)
+
+  (parse-inlines src)
+
+  (tap> *1)
+
+  )
+
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
 (defn trim-heading [content]
   (-> content
       (str/replace #"^\s+" "")
@@ -119,8 +215,8 @@
   (let [!lines (volatile! [])
         close-paragraph! #(let [lines (->> @!lines
                                            (map :content)
-                                           (map doc/text) ; TODO(Richo): Join lines and parse inlines
-                                           )]
+                                           (str/join "\n")
+                                           (parse-inlines))]
                             (vswap! !blocks conj
                                     (vary-meta (apply doc/paragraph lines)
                                                assoc :lines @!lines)))]

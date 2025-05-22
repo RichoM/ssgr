@@ -36,6 +36,10 @@
 (defn thematic-break []
   {:type ::thematic-break})
 
+(defn code-span [text]
+  {:type ::code-span
+   :text text})
+
 (defn document [& blocks]
   {:type ::document
    :blocks (vec blocks)})

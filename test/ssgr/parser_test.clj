@@ -74,8 +74,7 @@
 (deftest paragraph
   (is (= (p/parse "P1. L1\nP1. L2\n\nP2. L1")
          (d/document
-          (d/paragraph (d/text "P1. L1")
-                       (d/text "P1. L2"))
+          (d/paragraph (d/text "P1. L1\nP1. L2"))
           (d/paragraph (d/text "P2. L1"))))))
 
 (deftest atx-heading
@@ -128,6 +127,20 @@
          (d/document
           (d/code-block ""
            "var a := 3 + 4;\nprint(a);")))))
+
+(deftest code-spans
+  (is (= (p/parse "`foo`")
+         (d/document
+          (d/paragraph (d/code-span "foo")))))
+  (is (= (p/parse "``foo``")
+         (d/document
+          (d/paragraph (d/code-span "foo")))))
+  (is (= (p/parse "``foo`bar``")
+         (d/document
+          (d/paragraph (d/code-span "foo`bar")))))
+  (is (= (p/parse "``foo`") ; The backticks don't match so it's just text
+         (d/document
+          (d/paragraph (d/text "``foo`"))))))
 
 (comment
   (tap> *1)
