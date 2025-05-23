@@ -170,9 +170,6 @@
         (recur (conj result (in/next! stream)))
         result))))
 
-(defn consume-until! [stream until-fn]
-  (consume-while! stream (complement until-fn)))
-
 (defn consume-chars! [stream & chars]
   (consume-while! stream (set chars)))
 
