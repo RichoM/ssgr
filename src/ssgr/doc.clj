@@ -10,9 +10,10 @@
   {:type ::text
    :text text})
 
-(defn clojure [form]
+(defn clojure [form result]
   {:type ::clojure
-   :form form})
+   :form form
+   :result result})
 
 (defn link [text destination]
   {:type ::link

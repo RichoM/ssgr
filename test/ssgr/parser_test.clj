@@ -1,7 +1,8 @@
 (ns ssgr.parser-test
   (:require [clojure.test :refer [deftest testing is]]
             [ssgr.parser.core :as p]
-            [ssgr.doc :as d]))
+            [ssgr.doc :as d]
+            [hiccup.compiler :as h.c]))
 
 (deftest thematic-break-line
   (is (p/thematic-break? "---"))
@@ -177,52 +178,59 @@
            (d/text "[invalid")
            (d/link [(d/text "link")] "test"))))))
 
+(deftest paragraph-with-code
+  (is (= (p/parse "(println 3 4)\n(+ 3 4)\n\nTest")
+         (d/document
+          (d/paragraph (d/clojure '(println 3 4) nil)
+                       (d/text "\n") ; TODO(Richo): I don't know about this??
+                       (d/clojure '(+ 3 4) 7))
+          (d/paragraph (d/text "Test")))))
+  (is (= (p/parse "[:div (+ 3 4)]\n\nTest")
+         (d/document
+          (d/paragraph (d/clojure '[:div (+ 3 4)]
+                                  (h.c/normalize-element [:div 7])))
+          (d/paragraph (d/text "Test"))))))
+
+(deftest code-inside-heading
+  (is (= (p/parse "# Richo (+ 3 4) capo")
+         (d/document
+          (d/heading 1
+                     (d/text "Richo ")
+                     (d/clojure '(+ 3 4) 7)
+                     (d/text " capo")))))
+  (is (= (p/parse "(def test (atom 42))\n# Richo (do @test) capo")
+         (d/document
+          (d/paragraph (d/clojure '(def test (atom 42)) nil))
+          (d/heading 1
+                     (d/text "Richo ")
+                     (d/clojure '(do @test) 42)
+                     (d/text " capo"))))))
+
+(deftest code-inside-text
+  (is (= (p/parse "Richo (+ 3 4) capo")
+         (d/document
+          (d/paragraph
+           (d/text "Richo ")
+           (d/clojure '(+ 3 4) 7)
+           (d/text " capo")))))
+  (is (= (p/parse "(def test (atom 42))\n(loop [] (when (pos? @test) (swap! test dec) (recur)))\n\nRicho (do @test) [1 2 3] capo")
+         (d/document
+          (d/paragraph
+           (d/clojure '(def test (atom 42)) nil)
+           (d/text "\n") ; TODO(Richo): I don't know about this??
+           (d/clojure '(loop [] (when (pos? @test) (swap! test dec) (recur))) nil))
+          (d/paragraph
+           (d/text "Richo ")
+           (d/clojure '(do @test) 0)
+           (d/text " [1 2 3] capo"))))))
+
 (comment
-  
   (p/parse "(+ 3 4)")
   (tap> *1)
 
+  (def test (atom 42))
+  (loop [] (when (pos? @test) (swap! test dec) (recur)))
+  @test
   
-  (deftest paragraph-with-code
-    (is (= (p/parse "(println 3 4)\n(+ 3 4)\n\nTest")
-           (d/document
-            (d/paragraph (d/clojure '(println 3 4))
-                         (d/clojure '(+ 3 4)))
-            (d/paragraph (d/text "Test")))))
-    (is (= (p/parse "(do @counter)\n[:div (+ a b)]\n\nTest")
-           (d/document
-            (d/paragraph (d/clojure '(do @counter))
-                         (d/clojure '[:div (+ a b)]))
-            (d/paragraph (d/text "Test"))))))
 
-  (deftest code-inside-heading
-    (is (= (p/parse "# Richo (+ 3 4) capo")
-           (d/document
-            (d/heading 1
-                       (d/text "Richo ")
-                       (d/clojure '(+ 3 4))
-                       (d/text " capo")))))
-    (is (= (p/parse "# Richo (do @test) [1 2 3] capo")
-           (d/document
-            (d/heading 1
-                       (d/text "Richo ")
-                       (d/clojure '(do @test))
-                       (d/text " ")
-                       (d/clojure '[1 2 3])
-                       (d/text " capo"))))))
-
-  (deftest code-inside-text
-    (is (= (p/parse "Richo (+ 3 4) capo")
-           (d/document
-            (d/paragraph
-             (d/text "Richo ")
-             (d/clojure '(+ 3 4))
-             (d/text " capo")))))
-    (is (= (p/parse "Richo (do @test) [1 2 3] capo")
-           (d/document
-            (d/paragraph
-             (d/text "Richo ")
-             (d/clojure '(do @test))
-             (d/text " ")
-             (d/clojure '[1 2 3])
-             (d/text " capo")))))))
+  )

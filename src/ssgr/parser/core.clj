@@ -4,7 +4,10 @@
             [petitparser.core :as pp]
             [petitparser.results :as r]
             [petitparser.token :as t]
-            [ssgr.doc :as doc]))
+            [edamame.core :as e]
+            [hiccup.compiler :as h.c]
+            [ssgr.doc :as doc]
+            [ssgr.eval :refer [eval-form]]))
 
 (defn transform-with-token [p f]
   (pp/transform (pp/token p)
@@ -109,6 +112,54 @@
         (if (r/failure? result)
           (when rest (recur rest))
           (r/actual-result result))))))
+
+;;; Clojure parser
+
+(defn line-indices [string]
+  (loop [[line & rest] (str/split string #"\n")
+         start 0
+         indices (transient [])]
+    (if line
+      (let [count (count line)
+            stop (+ start count)]
+        (recur
+         rest
+         (inc stop)
+         (conj! indices [start stop])))
+      (persistent! indices))))
+
+(defn advance-stream-to-match! [stream reader source]
+  (let [^long line-number (e/get-line-number reader)
+        ^long column-number (e/get-column-number reader)
+        [line-position] (nth (line-indices source)
+                             (dec line-number))
+        ^long position (+ (in/position stream)
+                          line-position
+                          (dec column-number))]
+    (in/reset-position! stream position)))
+
+(defn eval-clojure [form]
+  (let [result (eval-form form)]
+    (if (vector? form)
+      (h.c/normalize-element result)
+      result)))
+
+(defn parse-clojure! [stream]
+  (let [begin-pos (in/position stream)]
+    (when (#{\( \[} (in/peek stream))
+      (try
+        (let [src (subs (in/source stream) begin-pos)
+              reader (e/source-reader src)
+              form (e/parse-next reader (e/normalize-opts {:all true}))
+              result (eval-clojure form)]
+          (advance-stream-to-match! stream reader src)
+          (vary-meta (doc/clojure form result)
+                     assoc :token (t/make-token (in/source stream)
+                                                begin-pos
+                                                (- (in/position stream) begin-pos)
+                                                nil)))
+        (catch Exception _
+          (in/reset-position! stream begin-pos))))))
 
 ;;; Inline parsers
 
@@ -273,12 +324,11 @@
   (parse-link! stream)
 
   (in/end? stream)
-  (tap> *1)
-  
-  )
+  (tap> *1))
 
-(defn parse-inlines 
-  [src & {:keys [allow-links?] :or {allow-links? true}}]
+(defn parse-inlines
+  [src & {:keys [allow-links? allow-clojure?]
+          :or {allow-links? true, allow-clojure? true}}]
   (let [stream (in/make-stream src)
         close-text (fn [text-begin text-end]
                      (let [text-token (when text-begin
@@ -293,8 +343,8 @@
            text-begin nil]
       (if-not (in/end? stream)
         (let [text-end (in/position stream)
-              element (or 
-                       (parse-code-span! stream)
+              element (or (when allow-clojure? (parse-clojure! stream))
+                          (parse-code-span! stream)
                           (when allow-links? (parse-link! stream)))]
           (if element
             (let [text-element (close-text text-begin text-end)]
