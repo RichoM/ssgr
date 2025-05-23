@@ -25,9 +25,9 @@
    :src src
    :alt alt})
 
-(defn paragraph [& lines]
+(defn paragraph [& elements]
   {:type ::paragraph
-   :lines (vec lines)})
+   :elements (vec elements)})
 
 (defn code-block [info text]
   {:type ::code-block

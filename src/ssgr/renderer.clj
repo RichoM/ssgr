@@ -18,16 +18,8 @@
   (vec (concat [(keyword (str \h level))]
                (map render elements))))
 
-(defmethod render* ::doc/clojure [{:keys [form] :as el}]
-  (try
-    (let [result (e/eval-form form)]
-      (if (vector? form)
-        (h.c/normalize-element result)
-        result))
-    (catch Throwable _
-      (if-let [token (-> el meta :token)]
-        (render (doc/text (t/input-value token)))
-        (str form)))))
+(defmethod render* ::doc/clojure [{:keys [result]}]
+  result)
 
 (defn relative-url? [url]
   (nil? (re-find #"^(?i)(?:[a-z+]+:)?//" url)))
@@ -39,21 +31,25 @@
     url))
 
 (defmethod render* ::doc/link [{:keys [text destination]}]
-  [:a {:href (fix-url destination)} text])
+  (vec (concat [:a {:href (fix-url destination)}]
+               (map render text))))
 
 (defmethod render* ::doc/image [{:keys [src alt]}]
   [:img {:src src :alt alt}])
 
-(defmethod render* ::doc/paragraph [{:keys [lines]}]
-  (let [rendered-lines (mapcat render lines)]
-    (when (seq rendered-lines)
-      (vec (concat [:p] rendered-lines)))))
+(defmethod render* ::doc/paragraph [{:keys [elements]}]
+  (let [rendered-elements (keep render elements)]
+    (when (seq rendered-elements)
+      (vec (concat [:p] rendered-elements)))))
 
 (defmethod render* ::doc/code-block [{:keys [info text]}]
   [:pre [:code {:class info} text]])
 
-(defmethod render* ::doc/line [{:keys [elements]}]
-  (vec (keep render elements)))
+(defmethod render* ::doc/code-span [{:keys [text]}]
+  [:code text])
+
+(defmethod render* ::doc/thematic-break [_]
+  [:hr])
 
 (defmethod render* ::doc/document [{:keys [blocks]}] 
   (let [rendered-blocks (keep render blocks)]
