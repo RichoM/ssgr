@@ -222,13 +222,20 @@
                        [content closing]
                        (recur (apply conj content closing))))
 
-                ; Line endings are converted to spaces
-                \newline (do (in/next! stream) ; Discard
-                             (when (= ::paragraph (:type (peek-line stream)))
+                ; Line endings are converted to spaces, but only if the next line is either
+                ; a paragraph or an indented-code-block.
+                \newline (do (in/next! stream) ; Discard newline
+                             (when (contains? #{::paragraph ::indented-code-block}
+                                              (:type (peek-line stream)))
+                               ; Discard leading spaces
+                               (consume-chars! stream \space \tab)
                                (recur (conj content \space))))
-                \return (do (in/next! stream) ; Discard
-                            (consume-1-char! stream \newline)
-                            (when (= ::paragraph (:type (peek-line stream)))
+                \return (do (in/next! stream) ; Discard newline
+                            (consume-1-char! stream \newline) ; Discard newline (if any)
+                            (when (contains? #{::paragraph ::indented-code-block}
+                                             (:type (peek-line stream)))
+                              ; Discard leading spaces
+                              (consume-chars! stream \space \tab)
                               (recur (conj content \space))))
 
                 ; Anything else is appended to the content

@@ -250,6 +250,29 @@
           (d/paragraph (d/text "ghi")
                        (d/text "``"))))))
 
+(deftest code-spans-edge-cases
+  (is (= (p/parse "``foo\n---``")
+         (d/document
+          (d/paragraph (d/code-span "foo ---")))))
+  (is (= (p/parse "``foo\n---\n``")
+         (d/document
+          (d/heading 2 
+                     (d/text "``")
+                     (d/text "foo"))
+          (d/paragraph (d/text "``")))))
+  (is (= (p/parse "``foo\n---\n``bar``")
+         (d/document
+          (d/heading 2
+                     (d/text "``")
+                     (d/text "foo"))
+          (d/paragraph (d/code-span "bar")))))
+  (is (= (p/parse "``\nfoo\nbar  \nbaz\n``")
+         (d/document
+          (d/paragraph (d/code-span "foo bar   baz")))))
+  (is (= (p/parse "`foo\n    bar`")
+         (d/document
+          (d/paragraph (d/code-span "foo bar"))))))
+
 (comment
   (p/parse "(+ 3 4)")
   
