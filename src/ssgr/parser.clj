@@ -192,11 +192,11 @@
 ;; Inline parsers
 
 (defn consume-while! [stream while-fn]
-  (loop [result []]
+  (loop [result (transient [])]
     (let [chr (in/peek stream)]
       (if (and chr (while-fn chr))
-        (recur (conj result (in/next! stream)))
-        result))))
+        (recur (conj! result (in/next! stream)))
+        (persistent! result)))))
 
 (defn consume-chars! [stream & chars]
   (consume-while! stream (set chars)))
@@ -212,15 +212,15 @@
           opening (consume-chars! stream \`)
           begin-content (in/position stream)
           [content closing]
-          (loop [content []]
+          (loop [content (transient [])]
             (let [next-char (in/peek stream)]
               (case next-char
                 ; The closing and opening must be of equal length
                 \` (let [closing (consume-chars! stream \`)]
                      (if (= (count closing)
                             (count opening))
-                       [content closing]
-                       (recur (apply conj content closing))))
+                       [(persistent! content) closing]
+                       (recur (reduce conj! content closing))))
 
                 ; Line endings are converted to spaces, but only if the next line is either
                 ; a paragraph or an indented-code-block.
@@ -229,18 +229,18 @@
                                               (:type (peek-line stream)))
                                ; Discard leading spaces
                                (consume-chars! stream \space \tab)
-                               (recur (conj content \space))))
+                               (recur (conj! content \space))))
                 \return (do (in/next! stream) ; Discard newline
                             (consume-1-char! stream \newline) ; Discard newline (if any)
                             (when (contains? #{::paragraph ::indented-code-block}
                                              (:type (peek-line stream)))
                               ; Discard leading spaces
                               (consume-chars! stream \space \tab)
-                              (recur (conj content \space))))
+                              (recur (conj! content \space))))
 
                 ; Anything else is appended to the content
                 (when next-char
-                  (recur (conj content (in/next! stream)))))))
+                  (recur (conj! content (in/next! stream)))))))
           end-pos (in/position stream)
           token (t/make-token (in/source stream)
                               begin-pos
@@ -268,7 +268,7 @@
     (let [[content closed?]
           (loop [bracket-count 0
                  prev-char (in/next! stream)
-                 content []]
+                 content (transient [])]
             (let [next-char (in/peek stream)]
               (case next-char
                 \\ (recur bracket-count
@@ -278,21 +278,21 @@
                             bracket-count
                             (inc bracket-count))
                           (in/next! stream)
-                          (conj content next-char))
+                          (conj! content next-char))
                 \] (if (= \\ prev-char)
                      (recur bracket-count
                             (in/next! stream)
-                            (conj content next-char))
+                            (conj! content next-char))
                      (if (zero? bracket-count)
                        (do (in/next! stream)
-                           [content true])
+                           [(persistent! content) true])
                        (recur (dec bracket-count)
                               (in/next! stream)
-                              (conj content next-char))))
-                nil [content false]
+                              (conj! content next-char))))
+                nil [(persistent! content) false]
                 (recur bracket-count
                        (in/next! stream)
-                       (conj content next-char)))))]
+                       (conj! content next-char)))))]
       (when closed?
         (parse-inlines! (in/make-stream (str/join content))
                         :allow-links? false
@@ -303,7 +303,7 @@
     (let [[content closed?]
           (loop [bracket-count 0
                  prev-char (in/next! stream)
-                 content []]
+                 content (transient [])]
             (let [next-char (in/peek stream)]
               (case next-char
                 \\ (recur bracket-count
@@ -313,21 +313,21 @@
                             bracket-count
                             (inc bracket-count))
                           (in/next! stream)
-                          (conj content next-char))
+                          (conj! content next-char))
                 \) (if (= \\ prev-char)
                      (recur bracket-count
                             (in/next! stream)
-                            (conj content next-char))
+                            (conj! content next-char))
                      (if (zero? bracket-count)
                        (do (in/next! stream)
-                           [content true])
+                           [(persistent! content) true])
                        (recur (dec bracket-count)
                               (in/next! stream)
-                              (conj content next-char))))
-                nil [content false]
+                              (conj! content next-char))))
+                nil [(persistent! content) false]
                 (recur bracket-count
                        (in/next! stream)
-                       (conj content next-char)))))]
+                       (conj! content next-char)))))]
       (when closed? (str/join content)))))
 
 (defn parse-link! [stream]
@@ -371,6 +371,8 @@
 
 (defn condj [v val]
   (if val (conj v val) v))
+(defn condj! [v val]
+  (if val (conj! v val) v))
 
 (defn parse-inline!
   [stream
@@ -385,14 +387,14 @@
                        (when text-token
                          (vary-meta (doc/text (t/input-value text-token))
                                     assoc :token text-token))))]
-    (loop [elements []
+    (loop [elements (transient [])
            text-begin nil]
       (let [begin-pos (in/position stream)]
         (if (r/success? (pp/parse-on newline-or-end stream))
-          (condj elements (close-text text-begin begin-pos))
+          (persistent! (condj! elements (close-text text-begin begin-pos)))
           (if (parse-escaped-characters! stream)
             (do (in/next! stream)
-                (recur (condj elements (close-text text-begin begin-pos))
+                (recur (condj! elements (close-text text-begin begin-pos))
                        (dec (in/position stream))))
             (let [text-end (in/position stream)
                   element (or (when allow-clojure? (parse-clojure! stream))
@@ -401,8 +403,8 @@
                               (parse-image! stream))]
               (if element
                 (recur (-> elements
-                           (condj (close-text text-begin text-end))
-                           (conj element))
+                           (condj! (close-text text-begin text-end))
+                           (conj! element))
                        nil)
                 (do (in/next! stream)
                     (recur elements (or text-begin text-end)))))))))))
@@ -432,40 +434,40 @@
                                               (apply concat)
                                               (vec)))
                                   assoc :token (make-token lines)))]
-    (loop [lines []]
+    (loop [lines (transient [])]
       (let [{:keys [type] :as next-line} (peek-line stream)]
         (case type
           ::paragraph
           (let [inlines (parse-inline! stream)]
             (if (seq inlines)
-              (recur (conj lines inlines))
-              (make-paragraph lines)))
+              (recur (conj! lines inlines))
+              (make-paragraph (persistent! lines))))
 
           ; If we find setext-heading-underline, we convert the whole 
           ; paragraph to a heading
           ::setext-heading-underline
           (let [{:keys [chars]} (next-line! stream)]
             (make-heading (if (= \- (first chars)) 2 1)
-                          lines))
+                          (persistent! lines)))
 
           ; Thematic breaks can be confused with setext-headings, in
           ; which case the setext-heading takes precedence
           ::thematic-break
           (if (= \- (first (:chars next-line)))
             (do (next-line! stream) ; discard next line
-                (make-heading 2 lines))
-            (make-paragraph lines))
+                (make-heading 2 (persistent! lines)))
+            (make-paragraph (persistent! lines)))
 
           ; Indented code blocks can't interrupt a paragraph, so if
           ; we found one we just treat it as a valid line
           ::indented-code-block
           (let [inlines (parse-inline! stream)]
             (if (seq inlines)
-              (recur (conj lines inlines))
-              (make-paragraph lines)))
+              (recur (conj! lines inlines))
+              (make-paragraph (persistent! lines))))
 
           ; Anything else, simply breaks the paragraph, we do nothing
-          (make-paragraph lines))))))
+          (make-paragraph (persistent! lines)))))))
 
 
 (defn parse-thematic-break! [stream]
@@ -502,11 +504,11 @@
   ; However, since we're parsing an indented block code, we need 
   ; to remove the first 4 indentation spaces.
   (let [begin-pos (in/position stream)
-        lines (loop [lines []]
+        lines (loop [lines (transient [])]
                 (let [{:keys [type]} (peek-line stream)]
                   (if (= ::indented-code-block type)
-                    (recur (conj lines (next-line! stream)))
-                    lines)))
+                    (recur (conj! lines (next-line! stream)))
+                    (persistent! lines))))
         line-contents (map #(-> % meta :token t/input-value (subs 4))
                            lines)]
     (vary-meta (doc/code-block "" (str/join line-contents))
@@ -518,7 +520,7 @@
 (defn parse-fenced-code-block! [stream]
   (let [begin-pos (in/position stream)
         opening (next-line! stream)
-        lines (loop [lines []]
+        lines (loop [lines (transient [])]
                 (if-let [{:keys [type] :as next} (peek-line stream)]
                   (if-not (and (= ::code-fence type)
                                (str/blank? (:info-string next))
@@ -526,9 +528,9 @@
                                   (-> next :chars first))
                                (<= (-> opening :chars count)
                                    (-> next :chars count)))
-                    (recur (conj lines (next-line! stream)))
-                    lines)
-                  lines))
+                    (recur (conj! lines (next-line! stream)))
+                    (persistent! lines))
+                  (persistent! lines)))
 
         ; We may or may not have a closing fence
         closing (when (= ::code-fence (:type (peek-line stream)))
@@ -558,12 +560,12 @@
       (throw (ex-info (str "Parse error! Type not found: " type) {})))))
 
 (defn parse-blocks! [stream]
-  (loop [blocks []]
+  (loop [blocks (transient [])]
     (if-not (in/end? stream)
       (if-let [next-block (parse-block! stream)]
-        (recur (conj blocks next-block))
+        (recur (conj! blocks next-block))
         (recur blocks))
-      blocks)))
+      (persistent! blocks))))
 
 (defn parse [src]
   (let [stream (in/make-stream src)

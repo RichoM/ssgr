@@ -58,7 +58,7 @@
 
 (comment
   
-  (-main "test-files" "out")
+  (time (-main "test-files" "out"))
   (-main "D:\\RichoM\\rescuesim\\rescuesim-intro" "out")
   (-main "D:\\RichoM\\CV\\src" "D:\\RichoM\\CV\\out")
 
