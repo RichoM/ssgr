@@ -9,6 +9,18 @@
             [ssgr.doc :as doc]
             [ssgr.eval :refer [eval-form]]))
 
+(defn make-token
+  ([stream begin-pos parsed-value]
+   (make-token stream
+               begin-pos
+               (in/position stream)
+               parsed-value))
+  ([stream begin-pos end-pos parsed-value]
+   (t/make-token (in/source stream)
+                 begin-pos
+                 (- end-pos begin-pos)
+                 parsed-value)))
+
 (def newline-parser (pp/or "\r\n" \return \newline))
 
 (defrecord NewlineOrEndParser []
@@ -177,10 +189,7 @@
               result (eval-clojure form)]
           (advance-stream-to-match! stream reader src)
           (vary-meta (doc/clojure form result)
-                     assoc :token (t/make-token (in/source stream)
-                                                begin-pos
-                                                (- (in/position stream) begin-pos)
-                                                nil)))
+                     assoc :token (make-token stream begin-pos nil)))
         (catch Exception _
           (in/reset-position! stream begin-pos))))))
 
@@ -237,11 +246,9 @@
                 ; Anything else is appended to the content
                 (when next-char
                   (recur (conj! content (in/next! stream)))))))
-          end-pos (in/position stream)
-          token (t/make-token (in/source stream)
-                              begin-pos
-                              (- end-pos begin-pos)
-                              [opening content closing])]
+          token (make-token stream
+                            begin-pos
+                            [opening content closing])]
       (if content
         (vary-meta (doc/code-span (let [text (str/join content)]
                                     ; If the resulting string both begins and ends 
@@ -329,14 +336,12 @@
 (defn parse-link! [stream]
   (let [begin-pos (in/position stream)
         link-text (parse-link-text! stream)
-        link-destination (parse-link-destination! stream)
-        end-pos (in/position stream)]
+        link-destination (parse-link-destination! stream)]
     (if (and link-text link-destination)
       (vary-meta (doc/link link-text link-destination)
-                 assoc :token (t/make-token (in/source stream)
-                                            begin-pos
-                                            (- end-pos begin-pos)
-                                            [link-text link-destination]))
+                 assoc :token (make-token stream
+                                          begin-pos
+                                          [link-text link-destination]))
       (do (in/reset-position! stream begin-pos)
           nil))))
 
@@ -345,14 +350,12 @@
     (let [begin-pos (in/position stream)
           bang (in/next! stream)
           img-description (parse-link-text! stream)
-          img-src (parse-link-destination! stream)
-          end-pos (in/position stream)]
+          img-src (parse-link-destination! stream)]
       (if (and img-description img-src)
         (vary-meta (apply doc/image img-src img-description)
-                   assoc :token (t/make-token (in/source stream)
-                                              begin-pos
-                                              (- end-pos begin-pos)
-                                              [bang img-description img-src]))
+                   assoc :token (make-token stream
+                                            begin-pos
+                                            [bang img-description img-src]))
         (do (in/reset-position! stream begin-pos)
             nil)))))
 
@@ -376,10 +379,10 @@
       :or {allow-links? true, allow-clojure? true}}]
   (let [close-text (fn [text-begin text-end]
                      (let [text-token (when text-begin
-                                        (t/make-token (in/source stream)
-                                                      text-begin
-                                                      (- text-end text-begin)
-                                                      nil))]
+                                        (make-token stream
+                                                    text-begin
+                                                    text-end
+                                                    nil))]
                        (when text-token
                          (vary-meta (doc/text (t/input-value text-token))
                                     assoc :token text-token))))]
@@ -417,10 +420,7 @@
 
 (defn parse-paragraph! [stream]
   (let [begin-pos (in/position stream)
-        make-token (fn [lines] (t/make-token (in/source stream)
-                                             begin-pos
-                                             (- (in/position stream) begin-pos)
-                                             lines))
+        make-token (fn [lines] (make-token stream begin-pos lines))
         make-paragraph (fn [lines] (vary-meta (apply doc/paragraph (vec (apply concat lines)))
                                               assoc :token (make-token lines)))
         make-heading (fn [level lines]
@@ -470,10 +470,7 @@
   (let [begin-pos (in/position stream)
         line (next-line! stream)]
     (vary-meta (doc/thematic-break)
-               assoc :token (t/make-token (in/source stream)
-                                          begin-pos
-                                          (- (in/position stream) begin-pos)
-                                          line))))
+               assoc :token (make-token stream begin-pos line))))
 
 (defn parse-atx-heading! [stream]
   (let [begin-pos (in/position stream)
@@ -483,10 +480,7 @@
     (consume-chars! stream \space \tab)
     (let [inlines (parse-inline! stream)]
       (vary-meta (apply doc/heading level inlines)
-                 assoc :token (t/make-token (in/source stream)
-                                            begin-pos
-                                            (- (in/position stream) begin-pos)
-                                            line)))))
+                 assoc :token (make-token stream begin-pos line)))))
 
 (defn parse-blank-lines! [stream]
   (loop []
@@ -508,10 +502,7 @@
         line-contents (map #(-> % meta :token t/input-value (subs 4))
                            lines)]
     (vary-meta (doc/code-block "" (str/join line-contents))
-               assoc :token (t/make-token (in/source stream)
-                                          begin-pos
-                                          (- (in/position stream) begin-pos)
-                                          lines))))
+               assoc :token (make-token stream begin-pos lines))))
 
 (defn parse-fenced-code-block! [stream]
   (let [begin-pos (in/position stream)
@@ -538,10 +529,8 @@
                            lines)]
     (vary-meta (doc/code-block (str/trim (:info-string opening))
                                (str/join line-contents))
-               assoc :token (t/make-token (in/source stream)
-                                          begin-pos
-                                          (- (in/position stream) begin-pos)
-                                          [opening lines closing]))))
+               assoc :token (make-token stream begin-pos
+                                        [opening lines closing]))))
 
 (defn parse-block! [stream]
   (let [{:keys [type]} (peek-line stream)]
@@ -570,6 +559,6 @@
                assoc :token (t/make-token src 0 (count src) nil))))
 
 (comment
-  (parse "texto `abc` texto")
+  (parse (slurp "test-files/intro.md"))
   (tap> *1)
   )
