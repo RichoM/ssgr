@@ -6,6 +6,37 @@
             [clojure.string :as str]
             [petitparser.token :as t]))
 
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+(defmulti as-text :type)
+
+(defmethod as-text ::doc/text [{:keys [text]}]
+  text)
+
+(defmethod as-text ::doc/heading [{:keys [elements]}]
+  (str/join (keep as-text elements)))
+
+(defmethod as-text ::doc/clojure [{:keys [result]}]
+  (str result))
+
+(defmethod as-text ::doc/link [{:keys [text]}]
+  (str/join (keep as-text text)))
+
+(defmethod as-text ::doc/image [{:keys [description]}]
+  (str/join (keep as-text description)))
+
+(defmethod as-text ::doc/paragraph [{:keys [elements]}]
+  (str/join (keep as-text elements)))
+
+(defmethod as-text ::doc/code-block [{:keys [text]}]
+  text)
+
+(defmethod as-text ::doc/code-span [{:keys [text]}]
+  text)
+
+(defmethod as-text ::doc/thematic-break [_]
+  "")
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 (declare render)
 
 (defmulti render* :type)
@@ -34,8 +65,8 @@
   (vec (concat [:a {:href (fix-url destination)}]
                (map render text))))
 
-(defmethod render* ::doc/image [{:keys [src alt]}]
-  [:img {:src src :alt alt}])
+(defmethod render* ::doc/image [{:keys [src description]}]
+  [:img {:src src :alt (str/join (keep as-text description))}])
 
 (defmethod render* ::doc/paragraph [{:keys [elements]}]
   (let [rendered-elements (keep render elements)]
