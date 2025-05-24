@@ -317,6 +317,25 @@
       (do (in/reset-position! stream begin-pos)
           nil))))
 
+(comment
+  (def src "\\a")
+  (def stream (in/make-stream src))
+  (parse-escaped-characters! stream)
+  (in/next! stream)
+  )
+
+(defn parse-escaped-characters! [stream]
+  (let [begin-pos (in/position stream)]
+    (when (= \\ (in/peek stream))
+      (let [result (in/next! stream)]
+        (if (contains? #{\( \[} (in/peek stream))
+          result
+          (do (in/reset-position! stream begin-pos)
+              nil))))))
+
+(defn condj [v val]
+  (if val (conj v val) v))
+
 (defn parse-inline!
   [stream
    & {:keys [allow-links? allow-clojure?]
@@ -334,24 +353,22 @@
            text-begin nil]
       (let [begin-pos (in/position stream)]
         (if (r/success? (pp/parse-on newline-or-end stream))
-          (if text-begin
-            (conj elements (close-text text-begin begin-pos))
-            elements)
-          (let [text-end (in/position stream)
-                element (or (when allow-clojure? (parse-clojure! stream))
-                            (parse-code-span! stream)
-                            (when allow-links? (parse-link! stream)))]
-            (if element
-              (let [text-element (close-text text-begin text-end)]
-                (recur (if text-element
-                         (-> elements
-                             (conj text-element)
-                             (conj element))
-                         (-> elements
-                             (conj element)))
-                       nil))
-              (do (in/next! stream)
-                  (recur elements (or text-begin text-end))))))))))
+          (condj elements (close-text text-begin begin-pos))
+          (if (parse-escaped-characters! stream)
+            (do (in/next! stream)
+                (recur (condj elements (close-text text-begin begin-pos))
+                       (dec (in/position stream))))
+            (let [text-end (in/position stream)
+                  element (or (when allow-clojure? (parse-clojure! stream))
+                              (parse-code-span! stream)
+                              (when allow-links? (parse-link! stream)))]
+              (if element
+                (recur (-> elements
+                           (condj (close-text text-begin text-end))
+                           (conj element))
+                       nil)
+                (do (in/next! stream)
+                    (recur elements (or text-begin text-end)))))))))))
 
 (defn parse-inlines! [stream & options]
   (loop [inlines []]

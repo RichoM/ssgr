@@ -233,6 +233,12 @@
           (d/code-block "python"
                         "wheelL.setVelocity(MAX_VEL)\nwheelR.setVelocity(MAX_VEL)\n")))))
 
+(deftest clojure-code-can-be-escaped
+  (is (= (p/parse "Esto no es clojure: \\(+ 3 4)")
+         (d/document
+          (d/paragraph (d/text "Esto no es clojure: ")
+                       (d/text "(+ 3 4)"))))))
+
 (deftest code-spans-should-not-extend-beyond-paragraph
   (is (= (p/parse "había una vez ``asdf\n\n\nghi``")
          (d/document
