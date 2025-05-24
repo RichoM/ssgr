@@ -1,6 +1,6 @@
 (ns ssgr.parser-test
   (:require [clojure.test :refer [deftest testing is]]
-            [ssgr.parser.core :as p]
+            [ssgr.parser :as p]
             [ssgr.doc :as d]
             [hiccup.compiler :as h.c]))
 
