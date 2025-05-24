@@ -1,10 +1,25 @@
 (ns ssgr.doc 
   (:require [clojure.string :as str]))
 
+(defn trim-heading [elements]
+  (->> (-> (vec elements)
+           (update 0 (fn [element]
+                       (if (= ::text (:type element))
+                         (update element :text #(str/replace % #"^\s+" ""))
+                         element)))
+           (update (dec (count elements))
+                   (fn [element]
+                     (if (= ::text (:type element))
+                       (update element :text #(str/replace % #"\s+#*\r*\n*$" ""))
+                       element))))
+       (filterv (fn [{:keys [type] :as element}]
+                  (or (not= ::text type)
+                      (not= "" (:text element)))))))
+
 (defn heading [level & elements]
   {:type ::heading
    :level level
-   :elements (vec elements)})
+   :elements (trim-heading elements)})
 
 (defn text [text]
   {:type ::text

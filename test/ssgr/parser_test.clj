@@ -51,20 +51,19 @@
   (is (not (p/code-fence? "    ```python"))))
 
 (deftest blank-line
-  (is (p/blank? ""))
-  (is (p/blank? "\t"))
-  (is (p/blank? "   "))
-  (is (p/blank? "    "))
-  (is (not (p/blank? "asdf")))
-  (is (not (p/blank? "  asdf")))
-  (is (not (p/blank? "    asdf"))))
+  (is (p/blank? "\n"))
+  (is (p/blank? "\t\n"))
+  (is (p/blank? "   \n"))
+  (is (p/blank? "    \n"))
+  (is (not (p/blank? "asdf\n")))
+  (is (not (p/blank? "  asdf\n")))
+  (is (not (p/blank? "    asdf\n"))))
 
 (deftest paragraph-line
   (is (p/paragraph? "Richo"))
   (is (p/paragraph? "Richo  "))
   (is (p/paragraph? "  Richo"))
   (is (not (p/paragraph? "    Richo"))))
-
 
 (deftest regular-text
   (is (= (p/parse "Texto normal")
@@ -75,7 +74,8 @@
 (deftest paragraph
   (is (= (p/parse "P1. L1\nP1. L2\n\nP2. L1")
          (d/document
-          (d/paragraph (d/text "P1. L1\nP1. L2"))
+          (d/paragraph (d/text "P1. L1")
+                       (d/text "P1. L2"))
           (d/paragraph (d/text "P2. L1"))))))
 
 (deftest atx-heading
@@ -121,7 +121,7 @@
          (d/document
           (d/code-block
            "python"
-           "    3 + 4")))))
+           "    3 + 4\n")))))
 
 (deftest indented-code-blocks
   (is (= (p/parse "    var a := 3 + 4;\n    print(a);")
@@ -182,7 +182,6 @@
   (is (= (p/parse "(println 3 4)\n(+ 3 4)\n\nTest")
          (d/document
           (d/paragraph (d/clojure '(println 3 4) nil)
-                       (d/text "\n") ; TODO(Richo): I don't know about this??
                        (d/clojure '(+ 3 4) 7))
           (d/paragraph (d/text "Test")))))
   (is (= (p/parse "[:div (+ 3 4)]\n\nTest")
@@ -217,12 +216,16 @@
          (d/document
           (d/paragraph
            (d/clojure '(def test (atom 42)) nil)
-           (d/text "\n") ; TODO(Richo): I don't know about this??
            (d/clojure '(loop [] (when (pos? @test) (swap! test dec) (recur))) nil))
           (d/paragraph
            (d/text "Richo ")
            (d/clojure '(do @test) 0)
            (d/text " [1 2 3] capo"))))))
+
+(deftest clojure-with-blank-lines-in-between
+  (is (= (p/parse "(+ 3\n\n\n4)")
+         (d/document
+          (d/paragraph (d/clojure '(+ 3 4) 7))))))
 
 (comment
   (p/parse "(+ 3 4)")
