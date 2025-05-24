@@ -233,8 +233,15 @@
           (d/code-block "python"
                         "wheelL.setVelocity(MAX_VEL)\nwheelR.setVelocity(MAX_VEL)\n")))))
 
+(deftest code-spans-should-not-extend-beyond-paragraph
+  (is (= (p/parse "había una vez ``asdf\n\n\nghi``")
+         (d/document
+          (d/paragraph (d/text "había una vez ``asdf"))
+          (d/paragraph (d/text "ghi``"))))))
+
 (comment
   (p/parse "(+ 3 4)")
+  
   (tap> *1)
 
   (def test (atom 42))
