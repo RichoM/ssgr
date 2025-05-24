@@ -142,24 +142,20 @@
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Clojure parser
 
-(defn line-indices [string]
-  (loop [[line & rest] (str/split string #"\n")
-         start 0
-         indices (transient [])]
-    (if line
-      (let [count (count line)
-            stop (+ start count)]
-        (recur
-         rest
-         (inc stop)
-         (conj! indices [start stop])))
-      (persistent! indices))))
+(defn find-line-idx [string line-number]
+  (loop [[line & rest] (str/split string #"\n" line-number)
+         line-idx 0
+         line-count 1]
+    (if (and line (< line-count line-number))
+      (recur rest
+             (+ line-idx (count line) 1)
+             (inc line-count))
+      line-idx)))
 
 (defn advance-stream-to-match! [stream reader source]
   (let [^long line-number (e/get-line-number reader)
         ^long column-number (e/get-column-number reader)
-        [line-position] (nth (line-indices source)
-                             (dec line-number))
+        line-position (find-line-idx source line-number)
         ^long position (+ (in/position stream)
                           line-position
                           (dec column-number))]
