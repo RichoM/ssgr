@@ -35,10 +35,10 @@
    :text text
    :destination destination})
 
-(defn image [src alt]
+(defn image [src & description]
   {:type ::image
    :src src
-   :alt alt})
+   :description description})
 
 (defn paragraph [& elements]
   {:type ::paragraph

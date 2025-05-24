@@ -273,6 +273,11 @@
          (d/document
           (d/paragraph (d/code-span "foo bar"))))))
 
+(deftest images 
+  (is (= (p/parse "![foo](url)")
+         (d/document
+          (d/paragraph (d/image "url" (d/text "foo")))))))
+
 (comment
   (p/parse "(+ 3 4)")
   

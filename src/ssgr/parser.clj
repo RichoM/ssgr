@@ -344,6 +344,22 @@
       (do (in/reset-position! stream begin-pos)
           nil))))
 
+(defn parse-image! [stream]
+  (when (= \! (in/peek stream))
+    (let [begin-pos (in/position stream)
+          bang (in/next! stream)
+          img-description (parse-link-text! stream)
+          img-src (parse-link-destination! stream)
+          end-pos (in/position stream)]
+      (if (and img-description img-src)
+        (vary-meta (apply doc/image img-src img-description)
+                   assoc :token (t/make-token (in/source stream)
+                                              begin-pos
+                                              (- end-pos begin-pos)
+                                              [bang img-description img-src]))
+        (do (in/reset-position! stream begin-pos)
+            nil)))))
+
 (defn parse-escaped-characters! [stream]
   (let [begin-pos (in/position stream)]
     (when (= \\ (in/peek stream))
@@ -381,7 +397,8 @@
             (let [text-end (in/position stream)
                   element (or (when allow-clojure? (parse-clojure! stream))
                               (parse-code-span! stream)
-                              (when allow-links? (parse-link! stream)))]
+                              (when allow-links? (parse-link! stream))
+                              (parse-image! stream))]
               (if element
                 (recur (-> elements
                            (condj (close-text text-begin text-end))
