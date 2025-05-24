@@ -122,6 +122,23 @@
 (defn paragraph? [line]
   (pp/matches? paragraph line))
 
+(defn next-line! [stream]
+  (let [parsers [thematic-break atx-heading
+                 setext-heading-underline
+                 indented-code-block code-fence
+                 blank paragraph]]
+    (loop [[parser & rest] parsers]
+      (let [result (pp/parse-on parser stream)]
+        (if (r/failure? result)
+          (when rest (recur rest))
+          (r/actual-result result))))))
+
+(defn peek-line [stream]
+  (let [begin-pos (in/position stream)
+        result (next-line! stream)]
+    (in/reset-position! stream begin-pos)
+    result))
+
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Clojure parser
 
@@ -193,6 +210,7 @@
   (when (= \` (in/peek stream))
     (let [begin-pos (in/position stream)
           opening (consume-chars! stream \`)
+          begin-content (in/position stream)
           [content closing]
           (loop [content []]
             (let [next-char (in/peek stream)]
@@ -206,22 +224,23 @@
 
                 ; Line endings are converted to spaces
                 \newline (do (in/next! stream) ; Discard
-                             (recur (conj content \space)))
+                             (when (= ::paragraph (:type (peek-line stream)))
+                               (recur (conj content \space))))
                 \return (do (in/next! stream) ; Discard
                             (consume-1-char! stream \newline)
-                            (recur (conj content \space)))
+                            (when (= ::paragraph (:type (peek-line stream)))
+                              (recur (conj content \space))))
 
                 ; Anything else is appended to the content
-                (if next-char
-                  (recur (conj content (in/next! stream)))
-                  [content nil]))))
+                (when next-char
+                  (recur (conj content (in/next! stream)))))))
           end-pos (in/position stream)
           token (t/make-token (in/source stream)
                               begin-pos
                               (- end-pos begin-pos)
                               [opening content closing])]
-      (vary-meta (if closing
-                   (doc/code-span (let [text (str/join content)]
+      (if content
+        (vary-meta (doc/code-span (let [text (str/join content)]
                                     ; If the resulting string both begins and ends 
                                     ; with a space character, but does not consist 
                                     ; entirely of space characters, a single space 
@@ -231,8 +250,9 @@
                                              (not (str/blank? text)))
                                       (subs text 1 (dec (count text)))
                                       text)))
-                   (doc/text (t/input-value token)))
-                 assoc :token token))))
+                   assoc :token token)
+        (do (in/reset-position! stream begin-content)
+            (doc/text (str/join opening)))))))
 
 (declare parse-inlines!)
 
@@ -317,13 +337,6 @@
       (do (in/reset-position! stream begin-pos)
           nil))))
 
-(comment
-  (def src "\\a")
-  (def stream (in/make-stream src))
-  (parse-escaped-characters! stream)
-  (in/next! stream)
-  )
-
 (defn parse-escaped-characters! [stream]
   (let [begin-pos (in/position stream)]
     (when (= \\ (in/peek stream))
@@ -379,23 +392,6 @@
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Block parsers
-
-(defn next-line! [stream]
-  (let [parsers [thematic-break atx-heading
-                 setext-heading-underline
-                 indented-code-block code-fence
-                 blank paragraph]]
-    (loop [[parser & rest] parsers]
-      (let [result (pp/parse-on parser stream)]
-        (if (r/failure? result)
-          (when rest (recur rest))
-          (r/actual-result result))))))
-
-(defn peek-line [stream]
-  (let [begin-pos (in/position stream)
-        result (next-line! stream)]
-    (in/reset-position! stream begin-pos)
-    result))
 
 (defn parse-paragraph! [stream]
   (let [begin-pos (in/position stream)
@@ -550,3 +546,8 @@
         blocks (parse-blocks! stream)]
     (vary-meta (apply doc/document blocks)
                assoc :token (t/make-token src 0 (count src) nil))))
+
+(comment
+  (parse "texto `abc` texto")
+  (tap> *1)
+  )

@@ -141,7 +141,9 @@
           (d/paragraph (d/code-span "foo`bar")))))
   (is (= (p/parse "``foo`") ; The backticks don't match so it's just text
          (d/document
-          (d/paragraph (d/text "``foo`")))))
+          (d/paragraph (d/text "``")
+                       (d/text "foo")
+                       (d/text "`")))))
   (is (= (p/parse "`` foo ` bar ``")
          (d/document
           (d/paragraph (d/code-span "foo ` bar")))))
@@ -242,8 +244,11 @@
 (deftest code-spans-should-not-extend-beyond-paragraph
   (is (= (p/parse "había una vez ``asdf\n\n\nghi``")
          (d/document
-          (d/paragraph (d/text "había una vez ``asdf"))
-          (d/paragraph (d/text "ghi``"))))))
+          (d/paragraph (d/text "había una vez ")
+                       (d/text "``")
+                       (d/text "asdf"))
+          (d/paragraph (d/text "ghi")
+                       (d/text "``"))))))
 
 (comment
   (p/parse "(+ 3 4)")
