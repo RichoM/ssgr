@@ -94,7 +94,7 @@
 (def paragraph
   (transform-with-token
    (pp/seq (pp/max space 3)
-           (pp/flatten [(pp/plus (pp/negate space))
+           (pp/flatten [(pp/plus (pp/negate pp/space))
                         (pp/star (pp/negate newline-or-end))])
            newline-or-end)
    (fn [[_ inline-text]]
@@ -502,7 +502,7 @@
         line-contents (map #(-> % meta :token t/input-value)
                            lines)]
     (vary-meta (doc/code-block (str/trim (:info-string opening))
-                               (str/join "\n" line-contents))
+                               (str/join line-contents))
                assoc :token (t/make-token (in/source stream)
                                           begin-pos
                                           (- (in/position stream) begin-pos)

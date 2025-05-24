@@ -227,6 +227,12 @@
          (d/document
           (d/paragraph (d/clojure '(+ 3 4) 7))))))
 
+(deftest code-blocks-with-many-lines
+  (is (= (p/parse "```python\nwheelL.setVelocity(MAX_VEL)\nwheelR.setVelocity(MAX_VEL)\n```")
+         (d/document
+          (d/code-block "python"
+                        "wheelL.setVelocity(MAX_VEL)\nwheelR.setVelocity(MAX_VEL)\n")))))
+
 (comment
   (p/parse "(+ 3 4)")
   (tap> *1)
