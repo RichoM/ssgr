@@ -278,6 +278,12 @@
          (d/document
           (d/paragraph (d/image "url" (d/text "foo")))))))
 
+(deftest link-with-slash-inside-text
+  (is (= (p/parse "[li\\nk](url)")
+         (d/document
+          (d/paragraph (d/link [(d/text "li\\nk")]
+                               "url"))))))
+
 (comment
   (p/parse "(+ 3 4)")
   

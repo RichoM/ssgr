@@ -268,34 +268,44 @@
 
 (defn parse-link-text! [stream]
   (when (= \[ (in/peek stream))
+    (in/next! stream) ; Discard the first bracket
     (let [[content closed?]
-          (loop [bracket-count 0
-                 prev-char (in/next! stream)
+          (loop [bracket-count 0 ; We keep track of the open brackets to make sure
+                                 ; they match the closing brackets
                  content (transient [])]
             (let [next-char (in/peek stream)]
               (case next-char
-                \\ (recur bracket-count
-                          (in/next! stream)
-                          content)
-                \[ (recur (if (= \\ prev-char)
-                            bracket-count
-                            (inc bracket-count))
-                          (in/next! stream)
-                          (conj! content next-char))
-                \] (if (= \\ prev-char)
-                     (recur bracket-count
-                            (in/next! stream)
-                            (conj! content next-char))
-                     (if (zero? bracket-count)
-                       (do (in/next! stream)
-                           [(persistent! content) true])
-                       (recur (dec bracket-count)
-                              (in/next! stream)
-                              (conj! content next-char))))
+                ; If we find an escape character, we check if the following char is
+                ; a bracket, in which case we discard the escape char and add the 
+                ; bracket to the content list, otherwise we add the escape char
+                \\ (let [escape-char (in/next! stream)]
+                     (if (contains? #{\[ \]} (in/peek stream))
+                       (recur bracket-count
+                              (conj! content (in/next! stream)))
+                       (recur bracket-count
+                              (conj! content escape-char))))
+                
+                ; We found an open bracket, we increment the bracket-count, we add
+                ; it to the content list, and we keep parsing
+                \[ (recur (inc bracket-count)
+                          (conj! content (in/next! stream)))
+                
+                ; We found a closing bracket, if the bracket-count is zero it means
+                ; the open/close brackets are balanced and we can stop parsing. If
+                ; the bracket-count is not zero we decrement the bracket-count, we
+                ; add the closing bracket to the content list, and keep going
+                \] (if (zero? bracket-count)
+                     (do (in/next! stream)
+                         [(persistent! content) true])
+                     (recur (dec bracket-count)
+                            (conj! content (in/next! stream))))
+                
+                ; If the next-char is nil it means we reached the end of the stream
                 nil [(persistent! content) false]
+
+                ; Any other character is simply added to the content list 
                 (recur bracket-count
-                       (in/next! stream)
-                       (conj! content next-char)))))]
+                       (conj! content (in/next! stream))))))]
       (when closed?
         (parse-inlines! (in/make-stream (str/join content))
                         :allow-links? false
