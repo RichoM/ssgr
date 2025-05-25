@@ -41,7 +41,8 @@
         out (fs/path out)]
     (fs/delete-tree out)
     (e/reset-callbacks!)
-    (let [files (list-files src)]
+    (let [files (list-files src)
+          begin-time (System/nanoTime)]
       (println "Found" (count files) "files.")
       (doseq [path files]
         (case (fs/extension path)
@@ -52,15 +53,19 @@
                  (process-file! path out-path))
           "clj" (process-file! path nil)
           (let [out-path (str/replace-first path (str src) (str out))]
-            (copy-file! path out-path)))
-        )
-      (println "DONE!"))))
+            (copy-file! path out-path))))
+      (let [end-time (System/nanoTime)]
+        (println "DONE!")
+        (println "Elapsed time:"
+                 (/ (double (- end-time begin-time))
+                    1000000.0)
+                 "ms")))))
 
 (comment
   
-  (time (-main "test-files" "out"))
+  (-main "test-files" "out")
   (-main "D:\\RichoM\\rescuesim\\rescuesim-intro" "out")
-  (-main "D:\\RichoM\\CV\\src" "D:\\RichoM\\CV\\out")
+  (-main "D:\\RichoM\\CV\\src" "out")
 
   (def src "D:\\RichoM\\CV\\src")
   (def out "D:\\RichoM\\CV\\out")
