@@ -1,7 +1,7 @@
 (ns ssgr.doc 
   (:require [clojure.string :as str]))
 
-(defn trim-heading [elements]
+(defn- trim-heading [elements]
   (if (seq elements) ; Make sure it's not empty
     (->> (-> (vec elements)
              (update 0 (fn [element]
