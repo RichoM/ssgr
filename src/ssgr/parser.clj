@@ -378,13 +378,15 @@
         (do (in/reset-position! stream begin-pos)
             nil)))))
 
-(defn parse-escaped-characters! [stream & chars]
-  ; If we find any of the chars preceded by a backslash (\) we return them, 
-  ; otherwise we leave the stream untouched and return nil
+(def punctuation-chars (set "!\"#$%&'()*+,-./:;<=>?@[\\]^_`{|}~"))
+
+(defn parse-escaped-characters! [stream]
+  ; If we find any punctuation character preceded by a backslash (\) we return 
+  ; them, otherwise we leave the stream untouched and return nil
   (let [begin-pos (in/position stream)]
     (when (= \\ (in/peek stream))
       (let [result (in/next! stream)]
-        (if (contains? (set chars) (in/peek stream))
+        (if (punctuation-chars (in/peek stream))
           result
           (do (in/reset-position! stream begin-pos)
               nil))))))
@@ -421,7 +423,7 @@
 
           ; Then, we try to match escaped characters, if we find them we first
           ; close the pending text and open a new one (skipping the backslash) 
-          (parse-escaped-characters! stream \( \[)
+          (parse-escaped-characters! stream)
           (do (in/next! stream)
               (recur (dec (in/position stream))
                      (condj! elements (close-text text-begin begin-pos))))

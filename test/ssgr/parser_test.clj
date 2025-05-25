@@ -307,16 +307,21 @@
           (d/heading 1)))))
 
 (deftest escaped-chars
+  ; Any ASCII punctuation character may be backslash-escaped
   (let [valid-chars "!\"#$%&'()*+,-./:;<=>?@[\\]^_`{|}~"
         escaped-chars (->> valid-chars
                            (map (fn [chr]
                                   (str "\\" chr)))
                            (str/join))]
     (is (= (d/as-text (p/parse escaped-chars))
-           valid-chars))))
+           valid-chars)))
+  ; Backslashes before other characters are treated as literal backslashes
+  (let [string "\\→\\A\\a\\ \\3\\φ\\«"]
+    (is (= (d/as-text (p/parse string))
+           string))))
 
 (comment
-  
+  (p/parse "texto \\`")
   (->> "!\"#$%&'()*+,-./:;<=>?@[\\]^_`{|}~"
        (map (fn [chr]
              (str "\\" chr)))
