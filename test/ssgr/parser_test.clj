@@ -292,6 +292,14 @@
            (d/code-span "link](/foo")
            (d/text ")"))))))
 
+(deftest code-spans-opening-and-closing-backtick-strings-need-to-be-equal-in-length
+  (is (= (p/parse "`foo``bar``")
+         (d/document
+          (d/paragraph
+           (d/text "`")
+           (d/text "foo")
+           (d/code-span "bar"))))))
+
 (comment
   (p/parse "(+ 3 4)")
   
