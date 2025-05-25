@@ -216,6 +216,19 @@
     (when (= char next)
       (in/next! stream))))
 
+(def punctuation-chars (set "!\"#$%&'()*+,-./:;<=>?@[\\]^_`{|}~"))
+
+(defn parse-escaped-characters! [stream]
+  ; If we find any punctuation character preceded by a backslash (\) we return 
+  ; them, otherwise we leave the stream untouched and return nil
+  (let [begin-pos (in/position stream)]
+    (when (= \\ (in/peek stream))
+      (let [result (in/next! stream)]
+        (if (punctuation-chars (in/peek stream))
+          result
+          (do (in/reset-position! stream begin-pos)
+              nil))))))
+
 (defn parse-code-span! [stream]
   (when (= \` (in/peek stream))
     (let [begin-pos (in/position stream)
@@ -269,49 +282,108 @@
         (do (in/reset-position! stream begin-content)
             (doc/text (str/join opening)))))))
 
-(declare parse-inlines!)
+(declare parse-special-inline!)
+
+(defn condj! [v val]
+  (if val (conj! v val) v))
 
 (defn parse-link-text! [stream]
   (when (= \[ (in/peek stream))
     (in/next! stream) ; Discard the first bracket
-    (let [content
-          (loop [bracket-count 0 ; We keep track of the open brackets to make sure
-                                 ; they match the closing brackets
-                 content (transient [])]
-            (when-let [next-char (in/peek stream)]
-              (case next-char
-                ; If we find an escape character, we check if the following char is
-                ; a bracket, in which case we discard the escape char and add the 
-                ; bracket to the content list, otherwise we add the escape char
-                \\ (let [escape-char (in/next! stream)]
-                     (if (contains? #{\[ \]} (in/peek stream))
-                       (recur bracket-count
-                              (conj! content (in/next! stream)))
-                       (recur bracket-count
-                              (conj! content escape-char))))
+    (let [close-text (fn [text-begin text-end]
+                       (let [text-token (when text-begin
+                                          (make-token stream
+                                                      text-begin
+                                                      text-end
+                                                      nil))]
+                         (when text-token
+                           (vary-meta (doc/text (t/input-value text-token))
+                                      assoc :token text-token))))]
+      (loop [bracket-count 0 ; We keep track of the open brackets to make sure
+                             ; they match the closing brackets
+             text-begin nil ; Marks the beginning of a pending text element, we
+                            ; need to close this pending text and add it to the
+                            ; elements list before adding another element
+             elements (transient [])]
+        (let [begin-pos (in/position stream)]
+          (when-not (in/end? stream)
+            ; We first try to match any escaped characters, if we find them we first
+            ; close the pending text and open a new one (skipping the backslash)
+            (if (parse-escaped-characters! stream)
+              (do (in/next! stream)
+                  (recur bracket-count
+                         (dec (in/position stream))
+                         (condj! elements (close-text text-begin begin-pos))))
+              (case (in/peek stream)
+                ; If the next char is a newline, we close the pending text and continue parsing
+                ; only if the next line is a paragraph or indented-code-block
+                \newline (do (in/next! stream) ; Discard newline
+                             (let [text-end (in/position stream)]
+                               (when (contains? #{::paragraph ::indented-code-block}
+                                                (:type (peek-line stream)))
+                                                       ; Discard leading spaces
+                                 (consume-chars! stream \space \tab)
+                                 (recur bracket-count
+                                        nil
+                                        (condj! elements (close-text text-begin text-end))))))
+                \return (do (in/next! stream) ; Discard newline
+                            (consume-1-char! stream \newline) ; Discard newline (if any)
+                            (let [text-end (in/position stream)]
+                              (when (contains? #{::paragraph ::indented-code-block}
+                                               (:type (peek-line stream)))
+                                                    ; Discard leading spaces
+                                (consume-chars! stream \space \tab)
+                                (recur bracket-count
+                                       nil
+                                       (condj! elements (close-text text-begin text-end))))))
 
-                ; We found an open bracket, we increment the bracket-count, we add
-                ; it to the content list, and we keep parsing
-                \[ (recur (inc bracket-count)
-                          (conj! content (in/next! stream)))
+                ; If we encounter an open bracket we increment the bracket-count and keep 
+                ; parsing (adding the bracket to the pending text)
+                \[ (do (in/next! stream)
+                       (recur (inc bracket-count)
+                              (or text-begin (dec (in/position stream)))
+                              elements))
+                
+                ; If we encounter a close bracket we check the bracket-count, if its zero
+                ; it means the open/close brackets are balanced and we can stop parsing 
+                ; after closing any pending text. If the bracket-count is not zero we just
+                ; decrement it and keep parsing (adding the bracket to the pending text)
+                \] (do (in/next! stream)
+                       (if (zero? bracket-count)
+                         (persistent! (condj! elements (close-text text-begin begin-pos)))
+                         (recur (dec bracket-count)
+                                (or text-begin (dec (in/position stream)))
+                                elements)))
 
-                ; We found a closing bracket, if the bracket-count is zero it means
-                ; the open/close brackets are balanced and we can stop parsing. If
-                ; the bracket-count is not zero we decrement the bracket-count, we
-                ; add the closing bracket to the content list, and keep going
-                \] (if (zero? bracket-count)
-                     (do (in/next! stream)
-                         (persistent! content))
-                     (recur (dec bracket-count)
-                            (conj! content (in/next! stream))))
+                ; Then we try to match special inlines (clojure, code-spans, links, 
+                ; images, etc). If we find any of them, we first close the pending 
+                ; text (if any) and add the special inline to the elements list. 
+                ; If no special inline is found we mark the current stream position 
+                ; as the beginning of a text element (but only if we didn't have a
+                ; pending text already open)
+                (let [text-end (in/position stream)
+                      element (parse-special-inline! stream)]
+                  (if element
+                    (recur bracket-count
+                           nil
+                           (-> elements
+                               (condj! (close-text text-begin text-end))
+                               (conj! element)))
+                    (do (in/next! stream)
+                        (recur bracket-count
+                               (or text-begin text-end)
+                               elements))))))))))))
 
-                ; Any other character is simply added to the content list 
-                (recur bracket-count
-                       (conj! content (in/next! stream))))))]
-      (when content
-        (parse-inlines! (in/make-stream (str/join content)) ; TODO(Richo): avoid new stream
-                        :skip-links? true
-                        :skip-clojure? true)))))
+(comment 
+  (def src "[foo\n](url)")
+  (def stream (in/make-stream src))
+  (parse-link-text! stream)
+
+  (in/next! stream)
+  (in/position stream)
+  (parse-special-inline! stream)
+  )
+
 
 (defn parse-link-destination! [stream]
   (when (= \( (in/peek stream))
@@ -378,25 +450,15 @@
         (do (in/reset-position! stream begin-pos)
             nil)))))
 
-(def punctuation-chars (set "!\"#$%&'()*+,-./:;<=>?@[\\]^_`{|}~"))
-
-(defn parse-escaped-characters! [stream]
-  ; If we find any punctuation character preceded by a backslash (\) we return 
-  ; them, otherwise we leave the stream untouched and return nil
-  (let [begin-pos (in/position stream)]
-    (when (= \\ (in/peek stream))
-      (let [result (in/next! stream)]
-        (if (punctuation-chars (in/peek stream))
-          result
-          (do (in/reset-position! stream begin-pos)
-              nil))))))
-
-(defn condj! [v val]
-  (if val (conj! v val) v))
-
-(defn parse-inline!
+(defn parse-special-inline!
   [stream
    & {:keys [skip-clojure? skip-code-spans? skip-links? skip-images?]}]
+  (or (when-not skip-clojure? (parse-clojure! stream))
+      (when-not skip-code-spans? (parse-code-span! stream))
+      (when-not skip-links? (parse-link! stream))
+      (when-not skip-images? (parse-image! stream))))
+
+(defn parse-inline! [stream & options]
   (let [; This close-text fn will make a text element if we pass two valid 
         ; indices. Keep in mind we might call close-text with nil if we 
         ; didn't have a pending text open already, in which case it just
@@ -435,10 +497,7 @@
           ; as the beginning of a text element (but only if we didn't have a
           ; pending text already open)
           :else (let [text-end (in/position stream)
-                      element (or (when-not skip-clojure? (parse-clojure! stream))
-                                  (when-not skip-code-spans? (parse-code-span! stream))
-                                  (when-not skip-links? (parse-link! stream))
-                                  (when-not skip-images? (parse-image! stream)))]
+                      element (parse-special-inline! stream options)]
                   (if element
                     (recur nil
                            (-> elements
@@ -447,13 +506,6 @@
                     (do (in/next! stream)
                         (recur (or text-begin text-end) 
                                elements)))))))))
-
-(defn parse-inlines! [stream & options]
-  (loop [inlines []]
-    (let [next-inline (parse-inline! stream options)]
-      (if (seq next-inline)
-        (recur (concat inlines next-inline))
-        (vec inlines)))))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Block parsers

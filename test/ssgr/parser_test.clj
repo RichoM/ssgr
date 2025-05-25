@@ -285,7 +285,7 @@
           (d/paragraph (d/link [(d/text "li\\nk")]
                                "url"))))))
 
-#_(deftest not-a-link ; Failing!
+(deftest code-spans-have-precedence-over-link-texts
   (is (= (p/parse "[not a `link](/foo`)")
          (d/document
           (d/paragraph
@@ -319,6 +319,21 @@
   (let [string "\\→\\A\\a\\ \\3\\φ\\«"]
     (is (= (d/as-text (p/parse string))
            string))))
+
+(deftest link-text-with-newline
+  (is (= (p/parse "[foo\n](url)")
+         (d/document
+          (d/paragraph (d/link [(d/text "foo\n")]
+                               "url")))))
+  (is (= (p/parse "[foo\n\n](url)") ; Not a link!
+         (d/document
+          (d/paragraph (d/text "[foo"))
+          (d/paragraph (d/text "](url)")))))
+  (is (= (p/parse "[link\n         with newline](url)")
+         (d/document
+          (d/paragraph (d/link [(d/text "link\n")
+                                (d/text "with newline")]
+                               "url"))))))
 
 (comment
   (p/parse "texto \\`")
