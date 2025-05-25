@@ -284,6 +284,14 @@
           (d/paragraph (d/link [(d/text "li\\nk")]
                                "url"))))))
 
+#_(deftest not-a-link ; Failing!
+  (is (= (p/parse "[not a `link](/foo`)")
+         (d/document
+          (d/paragraph
+           (d/text "[not a ")
+           (d/code-span "link](/foo")
+           (d/text ")"))))))
+
 (comment
   (p/parse "(+ 3 4)")
   
