@@ -2,7 +2,8 @@
   (:require [clojure.test :refer [deftest testing is]]
             [ssgr.parser :as p]
             [ssgr.doc :as d]
-            [hiccup.compiler :as h.c]))
+            [hiccup.compiler :as h.c]
+            [clojure.string :as str]))
 
 (deftest thematic-break-line
   (is (p/thematic-break? "---"))
@@ -305,8 +306,21 @@
          (d/document
           (d/heading 1)))))
 
+(deftest escaped-chars
+  (let [valid-chars "!\"#$%&'()*+,-./:;<=>?@[\\]^_`{|}~"
+        escaped-chars (->> valid-chars
+                           (map (fn [chr]
+                                  (str "\\" chr)))
+                           (str/join))]
+    (is (= (d/as-text (p/parse escaped-chars))
+           valid-chars))))
+
 (comment
   
+  (->> "!\"#$%&'()*+,-./:;<=>?@[\\]^_`{|}~"
+       (map (fn [chr]
+             (str "\\" chr)))
+       (str/join))
   
   (tap> *1)
 
