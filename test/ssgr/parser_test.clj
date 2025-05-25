@@ -300,8 +300,13 @@
            (d/text "foo")
            (d/code-span "bar"))))))
 
+(deftest atx-heading-with-single-#
+  (is (= (p/parse "#")
+         (d/document
+          (d/heading 1)))))
+
 (comment
-  (p/parse "(+ 3 4)")
+  
   
   (tap> *1)
 

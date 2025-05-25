@@ -2,19 +2,21 @@
   (:require [clojure.string :as str]))
 
 (defn trim-heading [elements]
-  (->> (-> (vec elements)
-           (update 0 (fn [element]
+  (if (seq elements) ; Make sure it's not empty
+    (->> (-> (vec elements)
+             (update 0 (fn [element]
+                         (if (= ::text (:type element))
+                           (update element :text #(str/replace % #"^\s+" ""))
+                           element)))
+             (update (dec (count elements))
+                     (fn [element]
                        (if (= ::text (:type element))
-                         (update element :text #(str/replace % #"^\s+" ""))
-                         element)))
-           (update (dec (count elements))
-                   (fn [element]
-                     (if (= ::text (:type element))
-                       (update element :text #(str/replace % #"\s+#*\r*\n*$" ""))
-                       element))))
-       (filterv (fn [{:keys [type] :as element}]
-                  (or (not= ::text type)
-                      (not= "" (:text element)))))))
+                         (update element :text #(str/replace % #"\s+#*\r*\n*$" ""))
+                         element))))
+         (filterv (fn [{:keys [type] :as element}]
+                    (or (not= ::text type)
+                        (not= "" (:text element))))))
+    elements))
 
 (defn heading [level & elements]
   {:type ::heading
