@@ -61,3 +61,37 @@
 (defn document [& blocks]
   {:type ::document
    :blocks (vec blocks)})
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+(defmulti as-text :type)
+
+(defmethod as-text ::text [{:keys [text]}]
+  text)
+
+(defmethod as-text ::heading [{:keys [elements]}]
+  (str/join (keep as-text elements)))
+
+(defmethod as-text ::clojure [{:keys [result]}]
+  (str result))
+
+(defmethod as-text ::link [{:keys [text]}]
+  (str/join (keep as-text text)))
+
+(defmethod as-text ::image [{:keys [description]}]
+  (str/join (keep as-text description)))
+
+(defmethod as-text ::paragraph [{:keys [elements]}]
+  (str/join (keep as-text elements)))
+
+(defmethod as-text ::code-block [{:keys [text]}]
+  text)
+
+(defmethod as-text ::code-span [{:keys [text]}]
+  text)
+
+(defmethod as-text ::thematic-break [_]
+  "")
+
+(defmethod as-text ::document [{:keys [blocks]}]
+  (str/join (keep as-text blocks)))
