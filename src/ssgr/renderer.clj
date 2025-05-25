@@ -2,9 +2,7 @@
   (:require [ssgr.doc :as doc]
             [ssgr.eval :as e]
             [hiccup.core :as h]
-            [hiccup.compiler :as h.c]
-            [clojure.string :as str]
-            [petitparser.token :as t]))
+            [clojure.string :as str]))
 
 (declare render)
 
@@ -67,30 +65,3 @@
     (catch Throwable _
       (println "ERROR INVALID HICCUP!!" content)
       (str "ERROR (" content ")"))))
-
-(comment
-  (require '[hiccup.core :as h])
-
-  (def x 5)
-  (def lst '(a b c))
-  
-  
-
-  (concat [:p]
-          [1 2 23])
-  (h/html [:span "Richo capo"])
-  (h/html [:h1 [:span "Richo"]])
-
-  (re-find #"^(?i)(?:[a-z+]+:)?//"
-           "test")
-  (->> (render (doc/document
-                (doc/paragraph
-                 (doc/line (doc/link "test"
-                                     "http://url.com")))))
-       (map #(h/html %))
-       (str/join "\n"))
-
-  (render (doc/heading 1 (doc/text "Richo")
-                       (doc/code '(+ 3 4))
-                       (doc/text "Capo")))
-  )
