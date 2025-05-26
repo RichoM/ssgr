@@ -18,10 +18,16 @@
                         (not= "" (:text element))))))
     elements))
 
+(defn- remove-trailing-breaks [elements]
+  (if (#{::soft-break ::hard-break}
+       (:type (last elements)))
+    (drop-last 1 elements)
+    elements))
+
 (defn heading [level & elements]
   {:type ::heading
    :level level
-   :elements (trim-heading elements)})
+   :elements (trim-heading (remove-trailing-breaks elements))})
 
 (defn text [text]
   {:type ::text
@@ -44,7 +50,7 @@
 
 (defn paragraph [& elements]
   {:type ::paragraph
-   :elements (vec elements)})
+   :elements (vec (remove-trailing-breaks elements))})
 
 (defn code-block [info text]
   {:type ::code-block
@@ -56,6 +62,9 @@
 
 (defn soft-break []
   {:type ::soft-break})
+
+(defn hard-break []
+  {:type ::hard-break})
 
 (defn code-span [text]
   {:type ::code-span

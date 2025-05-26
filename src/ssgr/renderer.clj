@@ -52,6 +52,9 @@
 (defmethod render* ::doc/soft-break [_]
   "\n")
 
+(defmethod render* ::doc/hard-break [_]
+  [:br])
+
 (defmethod render* ::doc/document [{:keys [blocks]}] 
   (let [rendered-blocks (keep render blocks)]
     (when (seq rendered-blocks)

@@ -340,6 +340,56 @@
                                 (d/text "with newline")]
                                "url"))))))
 
+(deftest soft-breaks
+  (is (= (p/parse "foo\nbar")
+         (d/document
+          (d/paragraph (d/text "foo")
+                       (d/soft-break)
+                       (d/text "bar")))))
+  (is (= (p/parse "foo \nbar")
+         (d/document
+          (d/paragraph (d/text "foo")
+                       (d/soft-break)
+                       (d/text "bar"))))))
+
+(deftest hard-breaks
+  (is (= (p/parse "foo\\\r\nbar")
+         (d/document
+          (d/paragraph (d/text "foo")
+                       (d/hard-break)
+                       (d/text "bar")))))
+  (is (= (p/parse "foo   \nbar")
+         (d/document
+          (d/paragraph (d/text "foo")
+                       (d/hard-break)
+                       (d/text "bar")))))
+  (is (= (p/parse "foo      \\\r\nbar")
+         (d/document
+          (d/paragraph (d/text "foo      ")
+                       (d/hard-break)
+                       (d/text "bar")))))
+  (is (= (p/parse "foo  \nbar")
+         (d/document
+          (d/paragraph (d/text "foo")
+                       (d/hard-break)
+                       (d/text "bar")))))
+  (is (= (p/parse "`foo`\\\nbar")
+         (d/document
+          (d/paragraph (d/code-span "foo")
+                       (d/hard-break)
+                       (d/text "bar")))))
+  (is (= (p/parse "`foo`  \\\nbar")
+         (d/document
+          (d/paragraph (d/code-span "foo")
+                       (d/text "  ")
+                       (d/hard-break)
+                       (d/text "bar")))))
+  (is (= (p/parse "`foo`  \nbar")
+         (d/document
+          (d/paragraph (d/code-span "foo")
+                       (d/hard-break)
+                       (d/text "bar"))))))
+
 (comment
   (p/parse "texto \\`")
   (->> "!\"#$%&'()*+,-./:;<=>?@[\\]^_`{|}~"

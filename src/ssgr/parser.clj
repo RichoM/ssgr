@@ -325,10 +325,10 @@
                                  (consume-chars! stream \space \tab)
                                  (recur bracket-count
                                         nil
-                                        (-> elements 
+                                        (-> elements
                                             (condj! (close-text text-begin begin-pos))
                                             (condj! (vary-meta (doc/soft-break)
-                                                               assoc :token (make-token stream 
+                                                               assoc :token (make-token stream
                                                                                         begin-pos
                                                                                         text-end
                                                                                         nil))))))))
@@ -355,8 +355,8 @@
                        (recur (inc bracket-count)
                               (or text-begin (dec (in/position stream)))
                               elements))
-                
-; If we encounter a close bracket we check the bracket-count, if its zero
+
+                ; If we encounter a close bracket we check the bracket-count, if its zero
                 ; it means the open/close brackets are balanced and we can stop parsing 
                 ; after closing any pending text. If the bracket-count is not zero we just
                 ; decrement it and keep parsing (adding the bracket to the pending text)
@@ -385,16 +385,6 @@
                         (recur bracket-count
                                (or text-begin text-end)
                                elements))))))))))))
-
-(comment 
-  (def sc "[foo\n](url)")
-  (def stream (in/make-stream src))
-  (parse-link-text! stream)
-
-  (in/next! stream)
-  (in/position stream)
-  (parse-special-inline! stream)
-  )
 
 (defn parse-link-destination! [stream]
   (when (= \( (in/peek stream))
@@ -469,18 +459,27 @@
       (when-not skip-links? (parse-link! stream))
       (when-not skip-images? (parse-image! stream))))
 
+(def line-break-parser (pp/seq (pp/star \space)
+                               (pp/optional \\)
+                               newline-parser))
+
+(defn parse-line-breaks! [stream]
+  (let [result (pp/parse-on line-break-parser stream)]
+    (when (r/success? result)
+      (r/actual-result result))))
+
 (defn parse-inline! [stream & options]
   (let [; This close-text fn will make a text element if we pass two valid 
         ; indices. Keep in mind we might call close-text with nil if we 
         ; didn't have a pending text open already, in which case it just
         ; returns nil.
         close-text (fn [text-begin text-end]
-                     (let [text-token (when text-begin
-                                        (make-token stream
+                     (when (and text-begin text-end
+                                (> text-end text-begin))
+                       (let [text-token (make-token stream
                                                     text-begin
                                                     text-end
-                                                    nil))]
-                       (when text-token
+                                                    nil)]
                          (vary-meta (doc/text (t/input-value text-token))
                                     assoc :token text-token))))]
     (loop [text-begin nil ; Marks the beginning of a pending text element, we
@@ -489,9 +488,8 @@
            elements (transient [])]
       (let [begin-pos (in/position stream)]
         (cond
-          ; If we find a newline or reach end of stream, we simply close the 
-          ; pending text (if any) and stop parsing
-          (r/success? (pp/parse-on newline-or-end stream))
+          ; If we reach the end, we simply close the pending text (if any) and stop parsing
+          (in/end? stream)
           (persistent! (condj! elements (close-text text-begin begin-pos)))
 
           ; Then, we try to match escaped characters, if we find them we first
@@ -499,36 +497,53 @@
           (parse-escaped-characters! stream)
           (do (in/next! stream)
               (recur (dec (in/position stream))
-                     (condj! elements (close-text text-begin begin-pos))))
+                     (condj! elements (close-text text-begin begin-pos))))          
 
-          ; Then we try to match special inlines (clojure, code-spans, links, 
-          ; images, etc). If we find any of them, we first close the pending 
-          ; text (if any) and add the special inline to the elements list. 
-          ; If no special inline is found we mark the current stream position 
-          ; as the beginning of a text element (but only if we didn't have a
-          ; pending text already open)
-          :else (let [text-end (in/position stream)
-                      element (parse-special-inline! stream options)]
-                  (if element
-                    (recur nil
-                           (-> elements
-                               (condj! (close-text text-begin text-end))
-                               (conj! element)))
-                    (do (in/next! stream)
-                        (recur (or text-begin text-end) 
-                               elements)))))))))
+          ; Then we try to parse soft/hard line breaks. If we find any, we close the 
+          ; pending text (if any), add the line break and stop parsing
+          :else (if-let [[spaces backslash] (parse-line-breaks! stream)]
+                  (persistent!
+                   (if backslash 
+                     ; If there is an explicit backslash it means we need to include 
+                     ; the spaces in the pending text and then add a hard break
+                     (-> elements
+                         (condj! (close-text (or text-begin begin-pos) 
+                                             (+ begin-pos (count spaces))))
+                         (conj! (doc/hard-break)))
+                     ; If there isn't an explicit backslash the spaces are not included
+                     ; in the pending text and the type of break depends on the number of
+                     ; spaces (2 or more: hard, otherwise soft)
+                     (-> elements
+                         (condj! (close-text text-begin begin-pos))
+                         (conj! (if (>= (count spaces) 2)
+                                  (doc/hard-break)
+                                  (doc/soft-break))))))
+                  ; Then we try to match special inlines (clojure, code-spans, links, 
+                  ; images, etc). If we find any of them, we first close the pending 
+                  ; text (if any) and add the special inline to the elements list. 
+                  ; If no special inline is found we mark the current stream position 
+                  ; as the beginning of a text element (but only if we didn't have a
+                  ; pending text already open)
+                  (let [text-end (in/position stream)
+                        element (parse-special-inline! stream options)]
+                    (if element
+                      (recur nil
+                             (-> elements
+                                 (condj! (close-text text-begin text-end))
+                                 (conj! element)))
+                      (do (in/next! stream)
+                          (recur (or text-begin text-end)
+                                 elements))))))))))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Block parsers
 
 (defn parse-paragraph! [stream]
   (let [begin-pos (in/position stream)
-        make-token (fn [lines] (make-token stream begin-pos lines))
+        make-token (fn [lines] (assoc (make-token stream begin-pos lines)
+                                      :lines lines))
         make-paragraph (fn [lines]
-                         (vary-meta (apply doc/paragraph (->> lines
-                                                              (interpose [(doc/soft-break)])
-                                                              (apply concat)
-                                                              (vec)))
+                         (vary-meta (apply doc/paragraph (vec (apply concat lines)))
                                     assoc :token (make-token lines)))
         make-heading (fn [level lines]
                        (vary-meta (apply doc/heading level
@@ -667,6 +682,7 @@
                assoc :token (t/make-token src 0 (count src) nil))))
 
 (comment
-  (parse (slurp "test-files/intro.md"))
+  (parse (slurp "test-files/hardbreak.md"))
+  (parse "P1. L1\nP1. L2")
   (tap> *1)
   )
