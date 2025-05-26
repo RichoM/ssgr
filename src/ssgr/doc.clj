@@ -102,8 +102,7 @@
 (defmethod as-text ::code-span [{:keys [text]}]
   text)
 
-(defmethod as-text ::thematic-break [_]
-  "")
-
 (defmethod as-text ::document [{:keys [blocks]}]
   (str/join (keep as-text blocks)))
+
+(defmethod as-text :default [_] "")
