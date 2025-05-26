@@ -325,7 +325,13 @@
                                  (consume-chars! stream \space \tab)
                                  (recur bracket-count
                                         nil
-                                        (condj! elements (close-text text-begin text-end))))))
+                                        (-> elements 
+                                            (condj! (close-text text-begin begin-pos))
+                                            (condj! (vary-meta (doc/soft-break)
+                                                               assoc :token (make-token stream 
+                                                                                        begin-pos
+                                                                                        text-end
+                                                                                        nil))))))))
                 \return (do (in/next! stream) ; Discard newline
                             (consume-1-char! stream \newline) ; Discard newline (if any)
                             (let [text-end (in/position stream)]
@@ -335,7 +341,13 @@
                                 (consume-chars! stream \space \tab)
                                 (recur bracket-count
                                        nil
-                                       (condj! elements (close-text text-begin text-end))))))
+                                       (-> elements
+                                           (condj! (close-text text-begin begin-pos))
+                                           (condj! (vary-meta (doc/soft-break)
+                                                              assoc :token (make-token stream
+                                                                                       begin-pos
+                                                                                       text-end
+                                                                                       nil))))))))
 
                 ; If we encounter an open bracket we increment the bracket-count and keep 
                 ; parsing (adding the bracket to the pending text)
@@ -344,7 +356,7 @@
                               (or text-begin (dec (in/position stream)))
                               elements))
                 
-                ; If we encounter a close bracket we check the bracket-count, if its zero
+; If we encounter a close bracket we check the bracket-count, if its zero
                 ; it means the open/close brackets are balanced and we can stop parsing 
                 ; after closing any pending text. If the bracket-count is not zero we just
                 ; decrement it and keep parsing (adding the bracket to the pending text)
@@ -375,7 +387,7 @@
                                elements))))))))))))
 
 (comment 
-  (def src "[foo\n](url)")
+  (def sc "[foo\n](url)")
   (def stream (in/make-stream src))
   (parse-link-text! stream)
 
@@ -383,7 +395,6 @@
   (in/position stream)
   (parse-special-inline! stream)
   )
-
 
 (defn parse-link-destination! [stream]
   (when (= \( (in/peek stream))
@@ -514,12 +525,15 @@
   (let [begin-pos (in/position stream)
         make-token (fn [lines] (make-token stream begin-pos lines))
         make-paragraph (fn [lines]
-                         (vary-meta (apply doc/paragraph (vec (apply concat lines)))
+                         (vary-meta (apply doc/paragraph (->> lines
+                                                              (interpose [(doc/soft-break)])
+                                                              (apply concat)
+                                                              (vec)))
                                     assoc :token (make-token lines)))
         make-heading (fn [level lines]
                        (vary-meta (apply doc/heading level
                                          (->> lines
-                                              (interpose [(doc/text "\n")])
+                                              (interpose [(doc/soft-break)])
                                               (apply concat)
                                               (vec)))
                                   assoc :token (make-token lines)))]

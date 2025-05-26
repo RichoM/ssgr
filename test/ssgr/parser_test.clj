@@ -76,6 +76,7 @@
   (is (= (p/parse "P1. L1\nP1. L2\n\nP2. L1")
          (d/document
           (d/paragraph (d/text "P1. L1")
+                       (d/soft-break)
                        (d/text "P1. L2"))
           (d/paragraph (d/text "P2. L1"))))))
 
@@ -185,6 +186,7 @@
   (is (= (p/parse "(println 3 4)\n(+ 3 4)\n\nTest")
          (d/document
           (d/paragraph (d/clojure '(println 3 4) nil)
+                       (d/soft-break)
                        (d/clojure '(+ 3 4) 7))
           (d/paragraph (d/text "Test")))))
   (is (= (p/parse "[:div (+ 3 4)]\n\nTest")
@@ -219,6 +221,7 @@
          (d/document
           (d/paragraph
            (d/clojure '(def test (atom 42)) nil)
+           (d/soft-break)
            (d/clojure '(loop [] (when (pos? @test) (swap! test dec) (recur))) nil))
           (d/paragraph
            (d/text "Richo ")
@@ -323,7 +326,8 @@
 (deftest link-text-with-newline
   (is (= (p/parse "[foo\n](url)")
          (d/document
-          (d/paragraph (d/link [(d/text "foo\n")]
+          (d/paragraph (d/link [(d/text "foo")
+                                (d/soft-break)]
                                "url")))))
   (is (= (p/parse "[foo\n\n](url)") ; Not a link!
          (d/document
@@ -331,7 +335,8 @@
           (d/paragraph (d/text "](url)")))))
   (is (= (p/parse "[link\n         with newline](url)")
          (d/document
-          (d/paragraph (d/link [(d/text "link\n")
+          (d/paragraph (d/link [(d/text "link")
+                                (d/soft-break)
                                 (d/text "with newline")]
                                "url"))))))
 

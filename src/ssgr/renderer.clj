@@ -49,6 +49,9 @@
 (defmethod render* ::doc/thematic-break [_]
   [:hr])
 
+(defmethod render* ::doc/soft-break [_]
+  "\n")
+
 (defmethod render* ::doc/document [{:keys [blocks]}] 
   (let [rendered-blocks (keep render blocks)]
     (when (seq rendered-blocks)

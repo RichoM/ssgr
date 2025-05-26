@@ -54,6 +54,9 @@
 (defn thematic-break []
   {:type ::thematic-break})
 
+(defn soft-break []
+  {:type ::soft-break})
+
 (defn code-span [text]
   {:type ::code-span
    :text text})
