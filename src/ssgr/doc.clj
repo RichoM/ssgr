@@ -70,6 +70,14 @@
   {:type ::code-span
    :text text})
 
+(defn emphasis [text]
+  {:type ::emphasis
+   :text text})
+
+(defn strong-emphasis [text]
+  {:type ::strong-emphasis
+   :text text})
+
 (defn document [& blocks]
   {:type ::document
    :blocks (vec blocks)})

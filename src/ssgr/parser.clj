@@ -201,6 +201,33 @@
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Inline parsers
 
+(def ^:private unicode-punctuation-character?
+  "A Unicode punctuation character is a character in the Unicode P (puncuation) 
+   or S (symbol) general categories."
+  (comp #{Character/DASH_PUNCTUATION
+          Character/END_PUNCTUATION
+          Character/FINAL_QUOTE_PUNCTUATION
+          Character/INITIAL_QUOTE_PUNCTUATION
+          Character/OTHER_PUNCTUATION
+          Character/START_PUNCTUATION
+          Character/CURRENCY_SYMBOL
+          Character/MATH_SYMBOL
+          Character/MODIFIER_SYMBOL
+          Character/OTHER_SYMBOL}
+        #(Character/getType %)))
+
+(defn- unicode-whitespace-character? 
+  "A Unicode whitespace character is a character in the Unicode Zs general category, 
+   or a tab (U+0009), line feed (U+000A), form feed (U+000C), or carriage return (U+000D)."
+  [chr]
+  (or (= Character/SPACE_SEPARATOR (Character/getType ^char chr))
+      (contains? #{\u0009 \u000A \u000C \u000D} chr)))
+
+(defn parse! [parser stream]
+  (let [result (pp/parse-on parser stream)]
+    (when (r/success? result)
+      (r/actual-result result))))
+
 (defn consume-while! [stream while-fn]
   (loop [result (transient [])]
     (let [chr (in/peek stream)]
@@ -451,22 +478,165 @@
         (do (in/reset-position! stream begin-pos)
             nil)))))
 
-(defn parse-special-inline!
-  [stream
-   & {:keys [skip-clojure? skip-code-spans? skip-links? skip-images?]}]
-  (or (when-not skip-clojure? (parse-clojure! stream))
-      (when-not skip-code-spans? (parse-code-span! stream))
-      (when-not skip-links? (parse-link! stream))
-      (when-not skip-images? (parse-image! stream))))
 
 (def line-break-parser (pp/seq (pp/star \space)
                                (pp/optional \\)
                                newline-parser))
 
 (defn parse-line-breaks! [stream]
-  (let [result (pp/parse-on line-break-parser stream)]
-    (when (r/success? result)
-      (r/actual-result result))))
+  (parse! line-break-parser stream))
+
+(defn peek-at [stream pos]
+  (nth (in/source stream) pos nil))
+
+(def delimiter-run-parser (pp/plus (pp/or \* \_)))
+
+(defn parse-left-delimiter-run! 
+  "A left-flanking delimiter run is a delimiter run that is (1) not followed 
+   by Unicode whitespace, and either (2a) not followed by a Unicode punctuation 
+   character, or (2b) followed by a Unicode punctuation character and preceded 
+   by Unicode whitespace or a Unicode punctuation character. For purposes of this
+   definition, the beginning and the end of the line count as Unicode whitespace."
+  [stream]
+  (let [begin-pos (in/position stream)]
+    (when-let [delimiter-run (parse! delimiter-run-parser stream)]
+      (when-let [next-char (in/peek stream)]
+        (when (not (unicode-whitespace-character? next-char))
+          (let [prev-char (or (peek-at stream (dec begin-pos))
+                              \space)]
+            (when (or (not (unicode-punctuation-character? next-char))
+                      (unicode-whitespace-character? prev-char)
+                      (unicode-punctuation-character? prev-char))
+              delimiter-run)))))))
+
+(defn parse-right-delimiter-run!
+  "A right-flanking delimiter run is a delimiter run that is (1) not preceded 
+   by Unicode whitespace, and either (2a) not preceded by a Unicode punctuation 
+   character, or (2b) preceded by a Unicode punctuation character and followed 
+   by Unicode whitespace or a Unicode punctuation character. For purposes of this 
+   definition, the beginning and the end of the line count as Unicode whitespace."
+  [stream]
+  (let [begin-pos (in/position stream)]
+    (when-let [delimiter-run (parse! delimiter-run-parser stream)]
+      (when-let [prev-char (peek-at stream (dec begin-pos))]
+        (when (not (unicode-whitespace-character? prev-char))
+          (let [next-char (or (in/peek stream) \space)]
+            (when (or (not (unicode-punctuation-character? prev-char))
+                      (unicode-whitespace-character? next-char)
+                      (unicode-punctuation-character? next-char))
+              delimiter-run)))))))
+
+
+(defn parse-emphasis! [stream]
+  (let [begin-pos (in/position stream)]
+    (when-let [left-delimiter (parse-left-delimiter-run! stream)]
+      (if-let [[elements right-delimiter]
+               (let [close-text (fn [text-begin text-end]
+                                  (let [text-token (when text-begin
+                                                     (make-token stream
+                                                                 text-begin
+                                                                 text-end
+                                                                 nil))]
+                                    (when text-token
+                                      (vary-meta (doc/text (t/input-value text-token))
+                                                 assoc :token text-token))))]
+                 (loop [text-begin nil ; Marks the beginning of a pending text element, we
+                                              ; need to close this pending text and add it to the
+                                              ; elements list before adding another element
+                        elements (transient [])]
+                   (let [begin-pos (in/position stream)]
+                     (when-not (in/end? stream)
+                              ; We first try to match any escaped characters, if we find them we first
+                              ; close the pending text and open a new one (skipping the backslash)
+                       (if (parse-escaped-characters! stream)
+                         (do (in/next! stream)
+                             (recur (dec (in/position stream))
+                                    (condj! elements (close-text text-begin begin-pos))))
+                         (case (in/peek stream)
+                                  ; If the next char is a newline, we close the pending text and continue parsing
+                                  ; only if the next line is a paragraph or indented-code-block
+                           \newline (do (in/next! stream) ; Discard newline
+                                        (let [text-end (in/position stream)]
+                                          (when (contains? #{::paragraph ::indented-code-block}
+                                                           (:type (peek-line stream)))
+                                                                         ; Discard leading spaces
+                                            (consume-chars! stream \space \tab)
+                                            (recur nil
+                                                   (-> elements
+                                                       (condj! (close-text text-begin begin-pos))
+                                                       (condj! (vary-meta (doc/soft-break)
+                                                                          assoc :token (make-token stream
+                                                                                                   begin-pos
+                                                                                                   text-end
+                                                                                                   nil))))))))
+                           \return (do (in/next! stream) ; Discard newline
+                                       (consume-1-char! stream \newline) ; Discard newline (if any)
+                                       (let [text-end (in/position stream)]
+                                         (when (contains? #{::paragraph ::indented-code-block}
+                                                          (:type (peek-line stream)))
+                                                                      ; Discard leading spaces
+                                           (consume-chars! stream \space \tab)
+                                           (recur nil
+                                                  (-> elements
+                                                      (condj! (close-text text-begin begin-pos))
+                                                      (condj! (vary-meta (doc/soft-break)
+                                                                         assoc :token (make-token stream
+                                                                                                  begin-pos
+                                                                                                  text-end
+                                                                                                  nil))))))))
+
+                                  ; Then we try to match special inlines (clojure, code-spans, links, 
+                                  ; images, etc). If we find any of them, we first close the pending 
+                                  ; text (if any) and add the special inline to the elements list. 
+                                  ; If no special inline is found we mark the current stream position 
+                                  ; as the beginning of a text element (but only if we didn't have a
+                                  ; pending text already open)
+                           (let [text-end (in/position stream)
+                                 right-delimiter (parse-right-delimiter-run! stream)]
+                             (if (= left-delimiter right-delimiter)
+                               [(persistent! (condj! elements (close-text text-begin text-end)))
+                                right-delimiter]
+                               (let [element (parse-special-inline! stream)]
+                                 (if element
+                                   (recur nil
+                                          (-> elements
+                                              (condj! (close-text text-begin text-end))
+                                              (conj! element)))
+                                   (do (in/next! stream)
+                                       (recur (or text-begin text-end)
+                                              elements))))))))))))]
+        (vary-meta (apply doc/emphasis elements)
+                   assoc :token (make-token stream begin-pos [left-delimiter elements right-delimiter]))
+        (do (in/reset-position! stream begin-pos)
+            nil)))))
+
+
+(comment
+
+  (do (def stream (in/make-stream "*foo+*a"))
+      (in/reset-position! stream 5))
+  (parse-right-delimiter-run! stream)
+
+  (def case-1 "texto *énfasis*") ; true
+  (def case-2a "textoo*énfasis*") ; true
+  (def case-2b "texto *+énfasis*") ; true
+  (def case-2b' "texto+*+énfasis*") ; true
+  (def bad-case "textoo*+énfasis*") ; FALSE
+
+  (do (def stream (in/make-stream case-1))
+      (in/reset-position! stream 6))
+  (in/peek stream)
+
+  (parse-left-delimiter-run! stream))
+
+(defn parse-special-inline!
+  [stream
+   & {:keys [skip-clojure? skip-code-spans? skip-links? skip-images? skip-emph?]}]
+  (or (when-not skip-clojure? (parse-clojure! stream))
+      (when-not skip-emph? (parse-emphasis! stream))
+      (when-not skip-code-spans? (parse-code-span! stream))
+      (when-not skip-links? (parse-link! stream))
+      (when-not skip-images? (parse-image! stream))))
 
 (defn parse-inline! [stream & options]
   (let [; This close-text fn will make a text element if we pass two valid 
@@ -518,7 +688,7 @@
                          (conj! (if (>= (count spaces) 2)
                                   (doc/hard-break)
                                   (doc/soft-break))))))
-                  ; Then we try to match special inlines (clojure, code-spans, links, 
+                  ; Finally, we try to match special inlines (clojure, code-spans, links, 
                   ; images, etc). If we find any of them, we first close the pending 
                   ; text (if any) and add the special inline to the elements list. 
                   ; If no special inline is found we mark the current stream position 

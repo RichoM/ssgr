@@ -390,18 +390,53 @@
                        (d/hard-break)
                        (d/text "bar"))))))
 
+(deftest emphasis
+  (is (= (p/parse "*foo bar*")
+         (d/document
+          (d/paragraph (d/emphasis (d/text "foo bar"))))))
+  (is (= (p/parse "texto *énfasis*")
+         (d/document
+          (d/paragraph (d/text "texto ")
+                       (d/emphasis (d/text "énfasis")))))
+      "case-1")
+  (is (= (p/parse "textoo*énfasis*")
+         (d/document
+          (d/paragraph (d/text "textoo")
+                       (d/emphasis (d/text "énfasis")))))
+      "case-2a")
+  (is (= (p/parse "texto *+énfasis*")
+         (d/document
+          (d/paragraph (d/text "texto ")
+                       (d/emphasis (d/text "+énfasis")))))
+      "case-2b")
+  (is (= (p/parse "texto+*+énfasis*")
+         (d/document
+          (d/paragraph (d/text "texto+")
+                       (d/emphasis (d/text "+énfasis")))))
+      "case-2b'")
+  (is (= (p/parse "textoo*+énfasis*")
+         (d/document
+          (d/paragraph (d/text "textoo*+énfasis*"))))
+      "bad-case"))
+
 (comment
+  (def case-1 "texto *énfasis*") ; true
+  (def case-2a "textoo*énfasis*") ; true
+  (def case-2b "texto *+énfasis*") ; true
+  (def case-2b' "texto+*+énfasis*") ; true
+  (def bad-case "textoo*+énfasis*") ; FALSE
+
   (p/parse "texto \\`")
   (->> "!\"#$%&'()*+,-./:;<=>?@[\\]^_`{|}~"
        (map (fn [chr]
-             (str "\\" chr)))
+              (str "\\" chr)))
        (str/join))
-  
+
   (tap> *1)
 
   (def test (atom 42))
   (loop [] (when (pos? @test) (swap! test dec) (recur)))
   @test
-  
+
 
   )
