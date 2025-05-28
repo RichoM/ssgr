@@ -489,8 +489,6 @@
 (defn peek-at [stream pos]
   (nth (in/source stream) pos nil))
 
-(def delimiter-run-parser (pp/plus (pp/or \* \_)))
-
 (defn parse-left-delimiter-run! 
   "A left-flanking delimiter run is a delimiter run that is (1) not followed 
    by Unicode whitespace, and either (2a) not followed by a Unicode punctuation 
@@ -499,7 +497,8 @@
    definition, the beginning and the end of the line count as Unicode whitespace."
   [stream]
   (let [begin-pos (in/position stream)]
-    (when-let [delimiter-run (parse! delimiter-run-parser stream)]
+    (when-let [delimiter-run (parse! (pp/plus (pp/or \* \_)) 
+                                     stream)]
       (when-let [next-char (in/peek stream)]
         (when (not (unicode-whitespace-character? next-char))
           (let [prev-char (or (peek-at stream (dec begin-pos))
@@ -509,15 +508,27 @@
                       (unicode-punctuation-character? prev-char))
               delimiter-run)))))))
 
+(comment
+  (def stream (in/make-stream "**test"))
+  (parse! (pp/plus-lazy (pp/or \* \_)
+                        pp/any)
+          stream)
+  (in/next! stream)
+  (in/peek stream)
+  (parse-left-delimiter-run! stream)
+  )
+
 (defn parse-right-delimiter-run!
   "A right-flanking delimiter run is a delimiter run that is (1) not preceded 
    by Unicode whitespace, and either (2a) not preceded by a Unicode punctuation 
    character, or (2b) preceded by a Unicode punctuation character and followed 
    by Unicode whitespace or a Unicode punctuation character. For purposes of this 
    definition, the beginning and the end of the line count as Unicode whitespace."
-  [stream]
+  [stream left-delimiter]
   (let [begin-pos (in/position stream)]
-    (when-let [delimiter-run (parse! delimiter-run-parser stream)]
+    (when-let [delimiter-run (parse! (pp/max (first left-delimiter)
+                                             (count left-delimiter)) 
+                                     stream)]
       (when-let [prev-char (peek-at stream (dec begin-pos))]
         (when (not (unicode-whitespace-character? prev-char))
           (let [next-char (or (in/peek stream) \space)]
@@ -592,7 +603,7 @@
                                   ; as the beginning of a text element (but only if we didn't have a
                                   ; pending text already open)
                            (let [text-end (in/position stream)
-                                 right-delimiter (parse-right-delimiter-run! stream)]
+                                 right-delimiter (parse-right-delimiter-run! stream left-delimiter)]
                              (if (= left-delimiter right-delimiter)
                                [(persistent! (condj! elements (close-text text-begin text-end)))
                                 right-delimiter]
@@ -613,30 +624,18 @@
 
 (comment
 
-  (do (def stream (in/make-stream "*foo+*a"))
-      (in/reset-position! stream 5))
-  (parse-right-delimiter-run! stream)
-
-  (def case-1 "texto *énfasis*") ; true
-  (def case-2a "textoo*énfasis*") ; true
-  (def case-2b "texto *+énfasis*") ; true
-  (def case-2b' "texto+*+énfasis*") ; true
-  (def bad-case "textoo*+énfasis*") ; FALSE
-
-  (do (def stream (in/make-stream case-1))
-      (in/reset-position! stream 6))
-  (in/peek stream)
-
-  (parse-left-delimiter-run! stream))
+  (parse "*(*foo*)*")
+  (parse "*(**foo**)*")
+  )
 
 (defn parse-special-inline!
   [stream
    & {:keys [skip-clojure? skip-code-spans? skip-links? skip-images? skip-emph?]}]
   (or (when-not skip-clojure? (parse-clojure! stream))
-      (when-not skip-emph? (parse-emphasis! stream))
       (when-not skip-code-spans? (parse-code-span! stream))
       (when-not skip-links? (parse-link! stream))
-      (when-not skip-images? (parse-image! stream))))
+      (when-not skip-images? (parse-image! stream))
+      (when-not skip-emph? (parse-emphasis! stream))))
 
 (defn parse-inline! [stream & options]
   (let [; This close-text fn will make a text element if we pass two valid 

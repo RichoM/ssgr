@@ -390,7 +390,7 @@
                        (d/hard-break)
                        (d/text "bar"))))))
 
-(deftest emphasis
+(deftest emphasis-with-*
   (is (= (p/parse "*foo bar*")
          (d/document
           (d/paragraph (d/emphasis (d/text "foo bar"))))))
@@ -417,21 +417,66 @@
   (is (= (p/parse "textoo*+énfasis*")
          (d/document
           (d/paragraph (d/text "textoo*+énfasis*"))))
-      "bad-case"))
+      "bad-case")
+  (is (= (p/parse "textoo *énfasis_")
+         (d/document
+          (d/paragraph (d/text "textoo *énfasis_"))))
+      "bad-case 2"))
+
+(deftest emphasis-with-_
+  (is (= (p/parse "_foo bar_")
+         (d/document
+          (d/paragraph (d/emphasis (d/text "foo bar"))))))
+  (is (= (p/parse "texto _énfasis_")
+         (d/document
+          (d/paragraph (d/text "texto ")
+                       (d/emphasis (d/text "énfasis")))))
+      "case-1")
+  (is (= (p/parse "textoo_énfasis_")
+         (d/document
+          (d/paragraph (d/text "textoo")
+                       (d/emphasis (d/text "énfasis")))))
+      "case-2a")
+  (is (= (p/parse "texto _+énfasis_")
+         (d/document
+          (d/paragraph (d/text "texto ")
+                       (d/emphasis (d/text "+énfasis")))))
+      "case-2b")
+  (is (= (p/parse "texto+_+énfasis_")
+         (d/document
+          (d/paragraph (d/text "texto+")
+                       (d/emphasis (d/text "+énfasis")))))
+      "case-2b'")
+  (is (= (p/parse "textoo_+énfasis_")
+         (d/document
+          (d/paragraph (d/text "textoo_+énfasis_"))))
+      "bad-case")
+  (is (= (p/parse "textoo _énfasis*")
+         (d/document
+          (d/paragraph (d/text "textoo _énfasis*"))))
+      "bad-case 2"))
+
+(deftest emphasis-with-unmatching-delimiters
+  (is (= (p/parse "texto **énfasis*")
+         (d/document
+          (d/paragraph (d/text "texto *")
+                       (d/emphasis (d/text "énfasis"))))))
+  (is (= (p/parse "texto *énfasis**")
+         (d/document
+          (d/paragraph (d/text "texto ")
+                       (d/emphasis (d/text "énfasis"))
+                       (d/text "*")))))
+  (is (= (p/parse "texto **énfasis*\ntexto *énfasis**")
+         (d/document
+          (d/paragraph (d/text "texto ")
+                       (d/emphasis
+                        (d/emphasis (d/text "énfasis"))
+                        (d/soft-break)
+                        (d/text "texto ")
+                        (d/emphasis (d/text "énfasis"))))))))
 
 (comment
-  (def case-1 "texto *énfasis*") ; true
-  (def case-2a "textoo*énfasis*") ; true
-  (def case-2b "texto *+énfasis*") ; true
-  (def case-2b' "texto+*+énfasis*") ; true
-  (def bad-case "textoo*+énfasis*") ; FALSE
-
-  (p/parse "texto \\`")
-  (->> "!\"#$%&'()*+,-./:;<=>?@[\\]^_`{|}~"
-       (map (fn [chr]
-              (str "\\" chr)))
-       (str/join))
-
+  
   (tap> *1)
 
   (def test (atom 42))
