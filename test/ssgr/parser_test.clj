@@ -456,7 +456,7 @@
           (d/paragraph (d/text "textoo _énfasis*"))))
       "bad-case 2"))
 
-(deftest emphasis-with-unmatching-delimiters
+(deftest emphasis-with-unmatching-delimiters ; FAILING
   (is (= (p/parse "texto **énfasis*")
          (d/document
           (d/paragraph (d/text "texto *")
@@ -475,7 +475,28 @@
                         (d/text "texto ")
                         (d/emphasis (d/text "énfasis"))))))))
 
+(deftest link-with-other-link-inside ; FAILING!
+  (is (= (p/parse "[link con [otro link](url2) adentro](url)")
+         (d/document
+          (d/paragraph (d/text "[link con ")
+                       (d/link [(d/text "otro link")]
+                               "url2")
+                       (d/text " adentro](url)"))))))
+
 (comment
+ ;  <paragraph>
+ ;   <text> [</text>
+ ;           <text>link con </text>
+ ;           <link destination= "url2" title= "" >
+ ;            <text>otro link</text>
+ ;           </link>
+ ;           <text> adentro</text>
+ ;           <text>] </text>
+ ;   <text> (url) </text>
+ ;  </paragraph>
+
+  (p/parse " adentro](url)")
+  (p/parse "[link con [otro link](url2) adentro](url)")
   
   (tap> *1)
 
