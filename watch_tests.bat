@@ -1,0 +1,1 @@
+lein test-refresh :changes-only
