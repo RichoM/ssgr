@@ -495,11 +495,15 @@
                                          inlines))]
               (-> before
                   (disable-open-links)
-                  (conj (if (= "[" (:text open-delimiter))
-                          (doc/link (ensure-no-delimiter-left-behind after) 
-                                    link-destination)
-                          (apply doc/image link-destination 
-                                 (ensure-no-delimiter-left-behind after))))))
+                  (conj (vary-meta
+                         (if (= "[" (:text open-delimiter))
+                           (doc/link (ensure-no-delimiter-left-behind after)
+                                     link-destination)
+                           (apply doc/image link-destination
+                                  (ensure-no-delimiter-left-behind after)))
+                         assoc :token (make-token stream
+                                                  (-> open-delimiter meta :token t/start)
+                                                  [open-delimiter after close-delimiter link-destination])))))
             (do (in/reset-position! stream begin-pos)
                 (-> inlines
                     (update idx delimiter->text)
@@ -596,8 +600,7 @@
 
 (defn parse-paragraph! [stream]
   (let [begin-pos (in/position stream)
-        make-token (fn [lines] (assoc (make-token stream begin-pos lines)
-                                      :lines lines))
+        make-token (fn [lines] (make-token stream begin-pos lines))
         make-paragraph (fn [lines]
                          (vary-meta (apply doc/paragraph (apply concat lines))
                                     assoc :token (make-token lines)))
