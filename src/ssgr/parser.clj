@@ -471,6 +471,13 @@
   (vary-meta (doc/text (:text delimiter))
              assoc :token (-> delimiter meta :token)))
 
+(defn- ensure-no-delimiter-left-behind [inlines] ; TODO(Richo): This shouldn't be necessary!
+  (mapv (fn [{:keys [type] :as inline}]
+          (if (= ::delimiter type)
+            (delimiter->text inline)
+            inline))
+        inlines))
+
 (defn- look-for-link-or-image! [stream inlines close-delimiter]
   (let [begin-pos (in/position stream)]
     (if-let [idx (find-last-index inlines (comp #{"[" "!["} :text))] 
@@ -489,8 +496,10 @@
               (-> before
                   (disable-open-links)
                   (conj (if (= "[" (:text open-delimiter))
-                          (doc/link after link-destination)
-                          (apply doc/image link-destination after)))))
+                          (doc/link (ensure-no-delimiter-left-behind after) 
+                                    link-destination)
+                          (apply doc/image link-destination 
+                                 (ensure-no-delimiter-left-behind after))))))
             (do (in/reset-position! stream begin-pos)
                 (-> inlines
                     (update idx delimiter->text)
@@ -500,66 +509,64 @@
               (conj (delimiter->text close-delimiter)))))
       (conj inlines (delimiter->text close-delimiter)))))
 
+
+
 (defn parse-inlines! [stream]
-  (let [inlines
-        (loop [inlines []
-               inline-text nil]
-          (cond
-            (in/end? stream)
-            (condj inlines (close-text inline-text))
-
-            (parse-escaped-characters! stream)
-            (recur (condj inlines (close-text inline-text))
-                   (append-next! nil stream))
-
-            :else (let [begin-pos (in/position stream)]
-                    (if-let [[spaces backslash] (parse-line-breaks! stream)]
-                      (let [token (make-token stream begin-pos [spaces backslash])
-                            inlines (if backslash
-                                      (-> inlines
-                                          (condj (-> inline-text
-                                                     (append-text stream spaces
-                                                                  (+ begin-pos (count spaces)))
-                                                     (close-text)))
-                                          (condj (vary-meta (doc/hard-break)
-                                                            assoc :token token)))
-                                      (-> inlines
-                                          (condj (close-text inline-text))
-                                          (condj (vary-meta (if (>= (count spaces) 2)
-                                                              (doc/hard-break)
-                                                              (doc/soft-break))
-                                                            assoc :token token))))]
-                        (if (contains? #{::paragraph ::indented-code-block} ; TODO(Richo): Check if this works for all inlines
-                                       (:type (peek-line stream)))
-                          (do (consume-chars! stream \space \tab)
-                              (recur inlines nil))
-                          inlines))
-                      (if-let [special-inline (or (parse-clojure! stream)
-                                                  (parse-code-span! stream))]
-                        (recur (-> inlines
-                                   (condj (close-text inline-text))
-                                   (condj special-inline))
-                               nil)
-                        (if-let [{:keys [text] :as delimiter} (parse-delimiter! stream)]
-                          (case (first text)
-                            \] (recur (look-for-link-or-image! stream
-                                                               (condj inlines (close-text inline-text))
-                                                               delimiter)
-                                      nil)
-
-                            (recur (-> inlines
-                                       (condj (close-text inline-text))
-                                       (condj delimiter))
-                                   nil))
-                          (recur inlines
-                                 (append-next! inline-text stream))))))))]
-    (mapv (fn [{:keys [type] :as inline}]
-            (if (= ::delimiter type)
-              (delimiter->text inline)
-              inline))
-          inlines)))
+  (loop [inlines []
+         inline-text nil]
+    (cond
+      (in/end? stream)
+      (ensure-no-delimiter-left-behind
+       (condj inlines (close-text inline-text)))
+  
+      (parse-escaped-characters! stream)
+      (recur (condj inlines (close-text inline-text))
+             (append-next! nil stream))
+  
+      :else (let [begin-pos (in/position stream)]
+              (if-let [[spaces backslash] (parse-line-breaks! stream)]
+                (let [token (make-token stream begin-pos [spaces backslash])
+                      inlines (if backslash
+                                (-> inlines
+                                    (condj (-> inline-text
+                                               (append-text stream spaces
+                                                            (+ begin-pos (count spaces)))
+                                               (close-text)))
+                                    (condj (vary-meta (doc/hard-break)
+                                                      assoc :token token)))
+                                (-> inlines
+                                    (condj (close-text inline-text))
+                                    (condj (vary-meta (if (>= (count spaces) 2)
+                                                        (doc/hard-break)
+                                                        (doc/soft-break))
+                                                      assoc :token token))))]
+                  (if (contains? #{::paragraph ::indented-code-block} ; TODO(Richo): Check if this works for all inlines
+                                 (:type (peek-line stream)))
+                    (do (consume-chars! stream \space \tab)
+                        (recur inlines nil))
+                    (ensure-no-delimiter-left-behind inlines)))
+                (if-let [special-inline (or (parse-clojure! stream)
+                                            (parse-code-span! stream))]
+                  (recur (-> inlines
+                             (condj (close-text inline-text))
+                             (condj special-inline))
+                         nil)
+                  (if-let [{:keys [text] :as delimiter} (parse-delimiter! stream)]
+                    (case (first text)
+                      \] (recur (look-for-link-or-image! stream
+                                                         (condj inlines (close-text inline-text))
+                                                         delimiter)
+                                nil)
+  
+                      (recur (-> inlines
+                                 (condj (close-text inline-text))
+                                 (condj delimiter))
+                             nil))
+                    (recur inlines
+                           (append-next! inline-text stream)))))))))
 
 (comment
+  (apply doc/image "url" [])
   
   (def stream (in/make-stream "![]"))
   (parse-delimiter! stream)
@@ -592,14 +599,13 @@
         make-token (fn [lines] (assoc (make-token stream begin-pos lines)
                                       :lines lines))
         make-paragraph (fn [lines]
-                         (vary-meta (apply doc/paragraph (vec (apply concat lines)))
+                         (vary-meta (apply doc/paragraph (apply concat lines))
                                     assoc :token (make-token lines)))
         make-heading (fn [level lines]
                        (vary-meta (apply doc/heading level
                                          (->> lines
                                               (interpose [(doc/soft-break)])
-                                              (apply concat)
-                                              (vec)))
+                                              (apply concat)))
                                   assoc :token (make-token lines)))]
     (loop [lines (transient [])]
       (let [{:keys [type] :as next-line} (peek-line stream)]
@@ -731,7 +737,18 @@
                assoc :token (t/make-token src 0 (count src) nil))))
 
 (comment
-  (parse (slurp "test-files/hardbreak.md"))
-  (parse "P1. L1\nP1. L2")
+  (let [delimiters (atom [])]
+    (clojure.walk/prewalk (fn [{:keys [type] :as e}]
+                            (when (= ::delimiter type)
+                              (swap! delimiters conj e))
+                            e)
+                          (parse (slurp "test-files\\04\\03_LIDAR.md")))
+    @delimiters)
+  (parse "![](03_LIDAR/imgs/image-3.png)")
+  (parse "[robot_lidar.json](03_LIDAR/robot_lidar.json)")
   (tap> *1)
+
+  (subs (slurp "test-files\\04\\03_LIDAR.md")
+        833)
+
   )
