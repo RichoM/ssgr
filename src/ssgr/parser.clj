@@ -312,12 +312,8 @@
 
 (declare parse-inlines!)
 
-(defn condj! [v val]
-  (if val (conj! v val) v))
-
 (defn condj [v val]
   (if val (conj v val) v))
-
 
 (defn parse-link-destination! [stream]
   (when (= \( (in/peek stream))
@@ -368,44 +364,6 @@
 (defn peek-at [stream pos]
   (nth (in/source stream) pos nil))
 
-(defn parse-left-delimiter-run!
-  "A left-flanking delimiter run is a delimiter run that is (1) not followed 
-   by Unicode whitespace, and either (2a) not followed by a Unicode punctuation 
-   character, or (2b) followed by a Unicode punctuation character and preceded 
-   by Unicode whitespace or a Unicode punctuation character. For purposes of this
-   definition, the beginning and the end of the line count as Unicode whitespace."
-  [stream]
-  (let [begin-pos (in/position stream)]
-    (when-let [delimiter-run (parse! (pp/plus (pp/or \* \_))
-                                     stream)]
-      (when-let [next-char (in/peek stream)]
-        (when (not (unicode-whitespace-character? next-char))
-          (let [prev-char (or (peek-at stream (dec begin-pos))
-                              \space)]
-            (when (or (not (unicode-punctuation-character? next-char))
-                      (unicode-whitespace-character? prev-char)
-                      (unicode-punctuation-character? prev-char))
-              delimiter-run)))))))
-
-(defn parse-right-delimiter-run!
-  "A right-flanking delimiter run is a delimiter run that is (1) not preceded 
-   by Unicode whitespace, and either (2a) not preceded by a Unicode punctuation 
-   character, or (2b) preceded by a Unicode punctuation character and followed 
-   by Unicode whitespace or a Unicode punctuation character. For purposes of this 
-   definition, the beginning and the end of the line count as Unicode whitespace."
-  [stream left-delimiter]
-  (let [begin-pos (in/position stream)]
-    (when-let [delimiter-run (parse! (pp/max (first left-delimiter)
-                                             (count left-delimiter))
-                                     stream)]
-      (when-let [prev-char (peek-at stream (dec begin-pos))]
-        (when (not (unicode-whitespace-character? prev-char))
-          (let [next-char (or (in/peek stream) \space)]
-            (when (or (not (unicode-punctuation-character? prev-char))
-                      (unicode-whitespace-character? next-char)
-                      (unicode-punctuation-character? next-char))
-              delimiter-run)))))))
-
 (defn append-next! [inline-text stream]
   (if inline-text
     (-> inline-text
@@ -431,44 +389,6 @@
     (when (> stop start)
       (vary-meta (doc/text text)
                  assoc :token (make-token stream start stop text)))))
-
-(defn parse-left-delimiter-run!
-  "A left-flanking delimiter run is a delimiter run that is (1) not followed 
-   by Unicode whitespace, and either (2a) not followed by a Unicode punctuation 
-   character, or (2b) followed by a Unicode punctuation character and preceded 
-   by Unicode whitespace or a Unicode punctuation character. For purposes of this
-   definition, the beginning and the end of the line count as Unicode whitespace."
-  [stream]
-  (let [begin-pos (in/position stream)]
-    (when-let [delimiter-run (parse! (pp/plus (pp/or \* \_))
-                                     stream)]
-      (when-let [next-char (in/peek stream)]
-        (when (not (unicode-whitespace-character? next-char))
-          (let [prev-char (or (peek-at stream (dec begin-pos))
-                              \space)]
-            (when (or (not (unicode-punctuation-character? next-char))
-                      (unicode-whitespace-character? prev-char)
-                      (unicode-punctuation-character? prev-char))
-              delimiter-run)))))))
-
-(defn parse-right-delimiter-run!
-  "A right-flanking delimiter run is a delimiter run that is (1) not preceded 
-   by Unicode whitespace, and either (2a) not preceded by a Unicode punctuation 
-   character, or (2b) preceded by a Unicode punctuation character and followed 
-   by Unicode whitespace or a Unicode punctuation character. For purposes of this 
-   definition, the beginning and the end of the line count as Unicode whitespace."
-  [stream left-delimiter]
-  (let [begin-pos (in/position stream)]
-    (when-let [delimiter-run (parse! (pp/max (first left-delimiter)
-                                             (count left-delimiter))
-                                     stream)]
-      (when-let [prev-char (peek-at stream (dec begin-pos))]
-        (when (not (unicode-whitespace-character? prev-char))
-          (let [next-char (or (in/peek stream) \space)]
-            (when (or (not (unicode-punctuation-character? prev-char))
-                      (unicode-whitespace-character? next-char)
-                      (unicode-punctuation-character? next-char))
-              delimiter-run)))))))
 
 (defn- can-open?
   "A left-flanking delimiter run is a delimiter run that is (1) not followed 
@@ -504,7 +424,7 @@
      :open? (can-open? prev-char next-char)
      :close? (can-close? prev-char next-char)}))
 
-(defn parse-delimiter! 
+(defn parse-delimiter!
   "When we’re parsing inlines and we hit either a run of * or _ characters, or a [ or ![
    we insert a text node with these symbols as its literal content, and we add a pointer
    to this text node to the delimiter stack."
@@ -537,7 +457,7 @@
                          :open? false
                          :close? true})
                  nil)]
-      (vary-meta delimiter assoc 
+      (vary-meta delimiter assoc
                  :token (make-token stream begin-pos nil)))))
 
 (defn- find-last-index [items pred] 
@@ -566,7 +486,6 @@
                                                   %)
                                                inlines)
                                          inlines))]
-              (println open-delimiter)
               (-> before
                   (disable-open-links)
                   (conj (if (= "[" (:text open-delimiter))
@@ -580,25 +499,6 @@
               (update idx delimiter->text)
               (conj (delimiter->text close-delimiter)))))
       (conj inlines (delimiter->text close-delimiter)))))
-
-(comment
-
-  (def stream (in/make-stream ""))
-  (def inlines (->> [0 1 2 3 4 "[" 6 7 8 "[" 10 "![" 11 12]
-                    (mapv (fn [n] (if (string? n)
-                                    {:text (str n)
-                                     :active? true}
-                                    {:text (str n)})))))
-  (look-for-link-or-image! stream inlines {:text "]"})
-
-  (tap> *1)
-
-  (let [inlines (map (fn [n] {:text (str n)}) inlines)]
-    (find-last-index inlines (comp #{"[" "!["} :text)))
-
-  (.lastIndexOf (rseq inlines) "[")
-
-  )
 
 (defn parse-inlines! [stream]
   (let [inlines
@@ -833,4 +733,5 @@
 (comment
   (parse (slurp "test-files/hardbreak.md"))
   (parse "P1. L1\nP1. L2")
-  (tap> *1))
+  (tap> *1)
+  )
