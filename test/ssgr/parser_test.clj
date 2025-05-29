@@ -129,7 +129,7 @@
   (is (= (p/parse "    var a := 3 + 4;\n    print(a);")
          (d/document
           (d/code-block ""
-           "var a := 3 + 4;\nprint(a);")))))
+                        "var a := 3 + 4;\nprint(a);")))))
 
 (deftest code-spans
   (is (= (p/parse "`foo`")
@@ -152,35 +152,6 @@
   (is (= (p/parse "`  ``  `")
          (d/document
           (d/paragraph (d/code-span " `` "))))))
-
-(deftest link
-  (is (= (p/parse "[test](http://url.com)")
-         (d/document
-          (d/paragraph
-           (d/link [(d/text "test")] "http://url.com")))))
-  (is (= (p/parse "[link con `código` adentro](http://url.com)")
-         (d/document
-          (d/paragraph
-           (d/link [(d/text "link con ")
-                    (d/code-span "código")
-                    (d/text " adentro")] 
-                   "http://url.com")))))
-  (is (= (p/parse "Probando un texto con un link en la misma línea: [test](http://url.com)")
-         (d/document
-          (d/paragraph
-           (d/text "Probando un texto con un link en la misma línea: ")
-           (d/link [(d/text "test")] "http://url.com")))))
-  (is (= (p/parse "# Link in heading [test](http://url.com) #######")
-         (d/document
-          (d/heading
-           1
-           (d/text "Link in heading ")
-           (d/link [(d/text "test")] "http://url.com")))))
-  (is (= (p/parse "[invalid[link](test)")
-         (d/document
-          (d/paragraph
-           (d/text "[invalid")
-           (d/link [(d/text "link")] "test"))))))
 
 (deftest paragraph-with-code
   (is (= (p/parse "(println 3 4)\n(+ 3 4)\n\nTest")
@@ -226,7 +197,41 @@
           (d/paragraph
            (d/text "Richo ")
            (d/clojure '(do @test) 0)
-           (d/text " [1 2 3] capo"))))))
+           (d/text " ")
+           (d/text "[")
+           (d/text "1 2 3")
+           (d/text "]")
+           (d/text " capo"))))))
+
+(deftest link
+  (is (= (p/parse "[test](http://url.com)")
+         (d/document
+          (d/paragraph
+           (d/link [(d/text "test")] "http://url.com")))))
+  (is (= (p/parse "[link con `código` adentro](http://url.com)")
+         (d/document
+          (d/paragraph
+           (d/link [(d/text "link con ")
+                    (d/code-span "código")
+                    (d/text " adentro")]
+                   "http://url.com")))))
+  (is (= (p/parse "Probando un texto con un link en la misma línea: [test](http://url.com)")
+         (d/document
+          (d/paragraph
+           (d/text "Probando un texto con un link en la misma línea: ")
+           (d/link [(d/text "test")] "http://url.com")))))
+  (is (= (p/parse "# Link in heading [test](http://url.com) #######")
+         (d/document
+          (d/heading
+           1
+           (d/text "Link in heading ")
+           (d/link [(d/text "test")] "http://url.com")))))
+  (is (= (p/parse "[invalid[link](test)")
+         (d/document
+          (d/paragraph
+           (d/text "[")
+           (d/text "invalid")
+           (d/link [(d/text "link")] "test"))))))
 
 (deftest clojure-with-blank-lines-in-between
   (is (= (p/parse "(+ 3\n\n\n4)")
@@ -260,7 +265,7 @@
           (d/paragraph (d/code-span "foo ---")))))
   (is (= (p/parse "``foo\n---\n``")
          (d/document
-          (d/heading 2 
+          (d/heading 2
                      (d/text "``")
                      (d/text "foo"))
           (d/paragraph (d/text "``")))))
@@ -277,7 +282,7 @@
          (d/document
           (d/paragraph (d/code-span "foo bar"))))))
 
-(deftest images 
+(deftest images
   (is (= (p/parse "![foo](url)")
          (d/document
           (d/paragraph (d/image "url" (d/text "foo")))))))
@@ -292,7 +297,8 @@
   (is (= (p/parse "[not a `link](/foo`)")
          (d/document
           (d/paragraph
-           (d/text "[not a ")
+           (d/text "[")
+           (d/text "not a ")
            (d/code-span "link](/foo")
            (d/text ")"))))))
 
@@ -331,8 +337,10 @@
                                "url")))))
   (is (= (p/parse "[foo\n\n](url)") ; Not a link!
          (d/document
-          (d/paragraph (d/text "[foo"))
-          (d/paragraph (d/text "](url)")))))
+          (d/paragraph (d/text "[")
+                       (d/text "foo"))
+          (d/paragraph (d/text "]")
+                       (d/text "(url)")))))
   (is (= (p/parse "[link\n         with newline](url)")
          (d/document
           (d/paragraph (d/link [(d/text "link")
@@ -389,6 +397,22 @@
           (d/paragraph (d/code-span "foo")
                        (d/hard-break)
                        (d/text "bar"))))))
+
+(deftest link-with-other-link-inside
+  (is (= (p/parse "[link con [otro link](url2) adentro](url)")
+         (d/document
+          (d/paragraph (d/text "[")
+                       (d/text "link con ")
+                       (d/link [(d/text "otro link")]
+                               "url2")
+                       (d/text " adentro")
+                       (d/text "]")
+                       (d/text "(url)"))))))
+
+(comment 
+  
+  (tap> *1)
+
 
 (deftest emphasis-with-*
   (is (= (p/parse "*foo bar*")
@@ -475,13 +499,9 @@
                         (d/text "texto ")
                         (d/emphasis (d/text "énfasis"))))))))
 
-(deftest link-with-other-link-inside ; FAILING!
-  (is (= (p/parse "[link con [otro link](url2) adentro](url)")
-         (d/document
-          (d/paragraph (d/text "[link con ")
-                       (d/link [(d/text "otro link")]
-                               "url2")
-                       (d/text " adentro](url)"))))))
+
+
+)
 
 (comment
  ;  <paragraph>
