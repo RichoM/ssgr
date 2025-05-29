@@ -46,7 +46,7 @@
 (defn image [src & description]
   {:type ::image
    :src src
-   :description description})
+   :description (vec description)})
 
 (defn paragraph [& elements]
   {:type ::paragraph
