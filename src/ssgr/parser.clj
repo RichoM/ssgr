@@ -420,7 +420,6 @@
         next-char (or (in/peek stream) \space)]
     {:type ::delimiter
      :text (str/join chars)
-     :active? true
      :open? (can-open? prev-char next-char)
      :close? (can-close? prev-char next-char)}))
 
@@ -439,7 +438,6 @@
                           (do (in/next! stream)
                               {:type ::delimiter
                                :text "!["
-                               :active? true
                                :open? true
                                :close? false})
                           (do (in/reset-position! stream begin-pos)
@@ -447,13 +445,11 @@
                  \[ (do (in/next! stream)
                         {:type ::delimiter
                          :text "["
-                         :active? true
                          :open? true
                          :close? false})
                  \] (do (in/next! stream)
                         {:type ::delimiter
                          :text "]"
-                         :active? true
                          :open? false
                          :close? true})
                  nil)]
@@ -482,7 +478,7 @@
   (let [begin-pos (in/position stream)]
     (if-let [idx (find-last-index inlines (comp #{"[" "!["} :text))] 
       (let [open-delimiter (nth inlines idx)]
-        (if (:active? open-delimiter)
+        (if (= ::delimiter (:type open-delimiter))
           (if-let [link-destination (parse-link-destination! stream)]
             (let [before (subvec inlines 0 idx)
                   after (subvec inlines (inc idx))
