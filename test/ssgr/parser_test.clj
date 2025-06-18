@@ -507,6 +507,14 @@
                         (d/text "texto ")
                         (d/emphasis (d/text "énfasis"))))))))
 
+(deftest strong-emphasis
+  (is (= (p/parse "*****texto*****")
+         (d/document
+          (d/paragraph (d/emphasis
+                        (d/strong-emphasis
+                         (d/strong-emphasis
+                          (d/text "texto")))))))))
+
 (comment 
   
   (tap> *1)

@@ -575,7 +575,10 @@
                               2 1)
                  [new-open open] (split-delimiter-at open (- open-count emph-count))
                  [close new-close] (split-delimiter-at close emph-count)
-                 emph (vary-meta (apply doc/emphasis (ensure-no-delimiter-left-behind content))
+                 emph (vary-meta (apply (if (= 2 emph-count) 
+                                          doc/strong-emphasis
+                                          doc/emphasis) 
+                                        (ensure-no-delimiter-left-behind content))
                                  assoc :token (merge-tokens [open content close]))
                  pre (subvec inlines
                              0
