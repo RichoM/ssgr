@@ -498,7 +498,7 @@
           (d/paragraph (d/text "texto ")
                        (d/emphasis (d/text "énfasis"))
                        (d/text "*")))))
-  #_(is (= (p/parse "texto **énfasis*\ntexto *énfasis**")
+  (is (= (p/parse "texto **énfasis*\ntexto *énfasis**")
          (d/document
           (d/paragraph (d/text "texto ")
                        (d/emphasis

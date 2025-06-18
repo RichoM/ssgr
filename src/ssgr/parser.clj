@@ -539,7 +539,7 @@
      (println "")
      (println "(def current-pos" current-pos ")")
      (println "(def openers-bottom" openers-bottom ")")
-     (println "(def inlines" inlines ")")
+     (println "(def inlines" (pr-str inlines) ")")
      (if (>= current-pos (count inlines))
        inlines
        (let [[opener-idx closer-idx] (next-emphasis-group inlines current-pos openers-bottom)]
@@ -558,7 +558,7 @@
                               2 1)
                  [new-open open] (split-delimiter-at open (- open-count emph-count))
                  [close new-close] (split-delimiter-at close emph-count)
-                 emph (vary-meta (apply doc/emphasis content) ; Ensure no delimiter in content?
+                 emph (vary-meta (apply doc/emphasis (ensure-no-delimiter-left-behind content))
                                  ; TODO(Richo): Merge tokens!
                                  assoc :token [open content close])
                  pre (subvec inlines
@@ -569,7 +569,7 @@
                  new-inlines (vec (concat pre
                                           [new-open emph new-close]
                                           post))]
-             (recur (inc closer-idx)
+             (recur closer-idx
                     openers-bottom
                     new-inlines))
 
@@ -589,24 +589,73 @@
                   (count inlines)
                   inlines)))))))
 (comment
+  (parse "texto **énfasis*\ntexto *énfasis**")
+  (def current-pos 0)
+  (def openers-bottom 0)
+  (def inlines [{:type :ssgr.doc/text, :text "texto "} 
+                {:type :ssgr.parser/delimiter, :text "**", :open? true, :close? false} ; 1
+                {:type :ssgr.doc/text, :text "énfasis"}
+                {:type :ssgr.parser/delimiter, :text "*", :open? false, :close? true}  ; 3
+                {:type :ssgr.doc/soft-break}
+                {:type :ssgr.doc/text, :text "texto "}
+                {:type :ssgr.parser/delimiter, :text "*", :open? true, :close? false}
+                {:type :ssgr.doc/text, :text "énfasis"}
+                {:type :ssgr.parser/delimiter, :text "**", :open? false, :close? true}])
+  [1 3]
 
-  (def new-open {:close? false, :open? true, :text "", :type :ssgr.parser/delimiter})
-  (def open {:close? false, :open? true, :text "*", :type :ssgr.parser/delimiter})
-  (def close {:close? true, :open? false, :text "*", :type :ssgr.parser/delimiter})
-  (def new-close {:close? true, :open? false, :text "", :type :ssgr.parser/delimiter})
-  (def current-pos 2)
-  (def openers-bottom 1)
-  (def inlines [{:type :ssgr.doc/text, :text "texto+"} 
-                {:type :ssgr.parser/delimiter, :text "*", :open? 25, :close? 25} 
-                {:type :ssgr.doc/text, :text "+énfasis"} 
-                {:type :ssgr.parser/delimiter, :text "*", :open? false, :close? true}])
+  (def current-pos 3)
+  (def openers-bottom 0)
+  (def inlines [{:type :ssgr.doc/text, :text "texto "} 
+                {:type :ssgr.parser/delimiter, :text "*", :open? true, :close? false}
+                {:type :ssgr.doc/emphasis, :text [{:type :ssgr.doc/text, :text "énfasis"}]}
+                {:type :ssgr.parser/delimiter, :text "", :open? false, :close? true} 
+                {:type :ssgr.doc/soft-break} 
+                {:type :ssgr.doc/text, :text "texto "}
+                {:type :ssgr.parser/delimiter, :text "*", :open? true, :close? false} ; 6
+                {:type :ssgr.doc/text, :text "énfasis"}
+                {:type :ssgr.parser/delimiter, :text "**", :open? false, :close? true} ; 8
+                ])
+  [6 8]
+  
+  (def current-pos 8)
+  (def openers-bottom 0)
+  (def inlines [{:type :ssgr.doc/text, :text "texto "} 
+                {:type :ssgr.parser/delimiter, :text "*", :open? true, :close? false} ; 1
+                {:type :ssgr.doc/emphasis, :text [{:type :ssgr.doc/text, :text "énfasis"}]} 
+                {:type :ssgr.parser/delimiter, :text "", :open? false, :close? true} 
+                {:type :ssgr.doc/soft-break} 
+                {:type :ssgr.doc/text, :text "texto "} 
+                {:type :ssgr.parser/delimiter, :text "", :open? true, :close? false} 
+                {:type :ssgr.doc/emphasis, :text [{:type :ssgr.doc/text, :text "énfasis"}]} 
+                {:type :ssgr.parser/delimiter, :text "*", :open? false, :close? true} ; 8
+                ])
+  [1 8]
+  
+  (def current-pos 8)
+  (def openers-bottom 0)
+  (def inlines [{:type :ssgr.doc/text, :text "texto "} 
+                {:type :ssgr.parser/delimiter, :text "", :open? true, :close? false} 
+                {:type :ssgr.doc/emphasis, :text [{:type :ssgr.doc/emphasis, :text [{:type :ssgr.doc/text, :text "énfasis"}]} {:type :ssgr.parser/delimiter, :text "", :open? false, :close? true} {:type :ssgr.doc/soft-break} {:type :ssgr.doc/text, :text "texto "} {:type :ssgr.parser/delimiter, :text "", :open? true, :close? false} {:type :ssgr.doc/emphasis, :text [{:type :ssgr.doc/text, :text "énfasis"}]}]} 
+                {:type :ssgr.parser/delimiter, :text "", :open? false, :close? true}])
+  
+  {:blocks
+   [{:elements [{:text "texto ", :type :ssgr.doc/text}
+                {:text [{:text [{:text "énfasis", :type :ssgr.doc/text}], :type :ssgr.doc/emphasis}
+                        {:close? true, :open? false, :text "", :type :ssgr.parser/delimiter}
+                        {:type :ssgr.doc/soft-break} {:text "texto ", :type :ssgr.doc/text}
+                        {:close? false, :open? true, :text "", :type :ssgr.parser/delimiter}
+                        {:text [{:text "énfasis", :type :ssgr.doc/text}], :type :ssgr.doc/emphasis}],
+                 :type :ssgr.doc/emphasis}],
+     :type :ssgr.doc/paragraph}],
+   :type :ssgr.doc/document}
 
 
-  (parse "texto+*+énfasis*")
+
+  (parse "texto **énfasis*\ntexto *énfasis**")
   (def inlines (-> (parse "texto **énfasis***") :blocks first :elements))
   (process-emphasis inlines)
   (def current-pos 0)
-  (next-emphasis-group inlines 2 1)
+  (next-emphasis-group inlines 9 6)
   (subvec inlines 0)
 
   (def stream (in/make-stream "*foo*"))
