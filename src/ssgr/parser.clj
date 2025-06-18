@@ -468,11 +468,128 @@
              assoc :token (-> delimiter meta :token)))
 
 (defn- ensure-no-delimiter-left-behind [inlines] ; TODO(Richo): This shouldn't be necessary!
+  inlines ; TODO(Richo): This is just for testing while I work on process-emphasis!
   (mapv (fn [{:keys [type] :as inline}]
           (if (= ::delimiter type)
             (delimiter->text inline)
             inline))
         inlines))
+
+(defn- find-first-closer 
+  ([inlines] (find-first-closer inlines 0))
+  ([inlines current-pos]
+   (loop [idx current-pos]
+     (when-let [{:keys [type] :as inline} (nth inlines idx nil)]
+       (if (and (= ::delimiter type)
+                (:close? inline)
+                (#{\* \_} (first (:text inline))))
+         idx
+         (recur (inc idx)))))))
+
+(defn- find-potential-opener [inlines closer-idx openers-bottom]
+  (let [closer (nth inlines closer-idx)
+        closer-char (first (:text closer))]
+    (loop [idx (dec closer-idx)]
+      (when (>= idx openers-bottom)
+        (when-let [{:keys [type] :as inline} (nth inlines idx nil)]
+          (if (and (= ::delimiter type)
+                   (:open? inline)
+                   (= closer-char (first (:text inline))))
+            idx
+            (recur (dec idx))))))))
+
+(defn next-emphasis-group [inlines current-pos openers-bottom]
+  (if-let [closer-idx (find-first-closer inlines current-pos)]
+    (if-let [opener-idx (find-potential-opener inlines closer-idx openers-bottom)]
+      [opener-idx closer-idx]
+      [nil closer-idx])
+    [nil nil]))
+
+(defn- process-emphasis [inlines]
+  (println inlines)
+  inlines
+  (ensure-no-delimiter-left-behind
+   (loop [current-pos 0
+          openers-bottom 0
+          result []]
+     (println "")
+     (println :current-pos current-pos)
+     (println :openers-bottom openers-bottom)
+     (println :result result)
+     (if (>= current-pos (count inlines))
+       (apply conj result (subvec inlines (min openers-bottom (count inlines))))
+       (let [[opener-idx closer-idx] (next-emphasis-group inlines current-pos openers-bottom)]
+         (println [opener-idx closer-idx])
+         (cond
+           ; We found both a closer and an opener
+           (and (some? opener-idx)
+                (some? closer-idx))
+           (let [open (nth inlines opener-idx)
+                 content (subvec inlines (inc opener-idx) closer-idx)
+                 close (nth inlines closer-idx)
+                 emph (vary-meta (apply doc/emphasis content) ; Ensure no delimiter in content?
+                                 ; TODO(Richo): Merge tokens!
+                                 assoc :token [open content close])]
+             (recur (inc closer-idx)
+                    (inc closer-idx)
+                    (conj (apply conj result (subvec inlines 
+                                                     (min opener-idx current-pos (count inlines))
+                                                     (min opener-idx (count inlines))))
+                          emph)))
+
+           ; We found a closer but no matching opener
+           (and (nil? opener-idx)
+                (some? closer-idx))
+           (do ;(println current-pos [opener-idx closer-idx])
+               ;(println result)
+             (recur (inc closer-idx)
+                    closer-idx
+                    (apply conj result (subvec inlines (min openers-bottom current-pos) 
+                                               closer-idx))))
+
+           ; We found neither
+           (and (nil? opener-idx)
+                (nil? closer-idx))
+           (recur (count inlines)
+                  (count inlines)
+                  (apply conj result (subvec inlines (max 0 (dec current-pos)))))))))))
+(comment
+  (def inlines (-> (parse "textoo*+énfasis*") :blocks first :elements))
+  (process-emphasis inlines)
+  (def current-pos 0)
+  (next-emphasis-group inlines 2 1)
+  (subvec inlines 0)
+
+  (def stream (in/make-stream "*foo*"))
+
+  
+  (apply conj [1 2 3]
+         [4 5 6])
+
+  (parse "*foo*
+          bar")
+
+  (tap> *1)
+  (tap> *e))
+
+(comment
+
+  (def inlines (-> (parse "*foo* texto _sin_ énfasis **bar**") :blocks first :elements))
+  (tap> *1)
+  (find-first-closer inlines 0)
+  (find-potential-opener inlines 6 0)
+  (process-emphasis inlines)
+
+  (next-emphasis-group (-> (parse "foo bar") :blocks first :elements)
+                       0 0)
+
+
+
+
+
+  (tap> *1)
+
+  )
 
 (defn- look-for-link-or-image! [stream inlines close-delimiter]
   (let [begin-pos (in/position stream)]
@@ -493,10 +610,10 @@
                   (disable-open-links)
                   (conj (vary-meta
                          (if (= "[" (:text open-delimiter))
-                           (doc/link (ensure-no-delimiter-left-behind after)
+                           (doc/link (process-emphasis after)
                                      link-destination)
                            (apply doc/image link-destination
-                                  (ensure-no-delimiter-left-behind after)))
+                                  (process-emphasis after)))
                          assoc :token (make-token stream
                                                   (-> open-delimiter meta :token t/start)
                                                   [open-delimiter after close-delimiter link-destination])))))
@@ -510,13 +627,12 @@
       (conj inlines (delimiter->text close-delimiter)))))
 
 
-
 (defn parse-inlines! [stream]
   (loop [inlines []
          inline-text nil]
     (cond
       (in/end? stream)
-      (ensure-no-delimiter-left-behind
+      (process-emphasis
        (condj inlines (close-text inline-text)))
   
       (parse-escaped-characters! stream)
@@ -544,7 +660,7 @@
                                  (:type (peek-line stream)))
                     (do (consume-chars! stream \space \tab)
                         (recur inlines nil))
-                    (ensure-no-delimiter-left-behind inlines)))
+                    (process-emphasis inlines)))
                 (if-let [special-inline (or (parse-clojure! stream)
                                             (parse-code-span! stream))]
                   (recur (-> inlines
@@ -564,32 +680,6 @@
                              nil))
                     (recur inlines
                            (append-next! inline-text stream)))))))))
-
-(comment
-  (apply doc/image "url" [])
-  
-  (def stream (in/make-stream "![]"))
-  (parse-delimiter! stream)
-  (def stream (in/make-stream "(def test (atom 42))\n(loop [] (when (pos? @test) (swap! test dec) (recur)))\n\nRicho (do @test) [1 2 3] capo"))
-  (parse-inlines! stream)
-
-  (def stream (in/make-stream "foobar (+ 3 4)\\+baz  \n  wow\\\ntest\n\nsigue siguiendo"))
-  (def stream (in/make-stream "*foo* _bar_ **baz**"))
-  (def stream (in/make-stream "   *foo*bar*  __baz__    "))
-  (parse-inlines! stream)
-  (def inline-text (atom nil))
-  (swap! inline-text append-next! stream)
-  (in/next! stream)
-
-  (append-text @inline-text stream "bar" (in/position stream))
-
-  (parse "*(*foo*)*") ; ["*" "(" "*" "foo" "*" ")" "*"]
-  (parse "*(**foo**)*")
-  
-  (tap> *1)
-  (tap> *e)
-  )
-
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Block parsers

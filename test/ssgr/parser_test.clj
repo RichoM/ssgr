@@ -409,11 +409,6 @@
                        (d/text "]")
                        (d/text "(url)"))))))
 
-(comment 
-  
-  (tap> *1)
-
-
 (deftest emphasis-with-*
   (is (= (p/parse "*foo bar*")
          (d/document
@@ -440,11 +435,17 @@
       "case-2b'")
   (is (= (p/parse "textoo*+énfasis*")
          (d/document
-          (d/paragraph (d/text "textoo*+énfasis*"))))
+          (d/paragraph (d/text "textoo")
+                       (d/text "*")
+                       (d/text "+énfasis")
+                       (d/text "*"))))
       "bad-case")
   (is (= (p/parse "textoo *énfasis_")
          (d/document
-          (d/paragraph (d/text "textoo *énfasis_"))))
+          (d/paragraph (d/text "textoo ")
+                       (d/text "*")
+                       (d/text "énfasis")
+                       (d/text "_"))))
       "bad-case 2"))
 
 (deftest emphasis-with-_
@@ -473,12 +474,22 @@
       "case-2b'")
   (is (= (p/parse "textoo_+énfasis_")
          (d/document
-          (d/paragraph (d/text "textoo_+énfasis_"))))
+          (d/paragraph (d/text "textoo")
+                       (d/text "_")
+                       (d/text "+énfasis")
+                       (d/text "_"))))
       "bad-case")
   (is (= (p/parse "textoo _énfasis*")
          (d/document
-          (d/paragraph (d/text "textoo _énfasis*"))))
+          (d/paragraph (d/text "textoo ")
+                       (d/text "_")
+                       (d/text "énfasis")
+                       (d/text "*"))))
       "bad-case 2"))
+
+(comment 
+  
+  (tap> *1)
 
 (deftest emphasis-with-unmatching-delimiters ; FAILING
   (is (= (p/parse "texto **énfasis*")
