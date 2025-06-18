@@ -9,6 +9,9 @@
             [ssgr.doc :as doc]
             [ssgr.eval :refer [eval-form]]))
 
+(defn assoc-input-value [token] ; TODO(Richo): Just for debugging purposes!
+  (assoc token :input-value (t/input-value token)))
+
 (defn make-token
   "Utility function to make a token from the current position of a stream"
   ([stream begin-pos parsed-value]
@@ -17,11 +20,23 @@
                (in/position stream)
                parsed-value))
   ([stream begin-pos end-pos parsed-value]
-   (let [token (t/make-token (in/source stream)
-                             begin-pos
-                             (- end-pos begin-pos)
-                             parsed-value)]
-     (assoc token :input-value (t/input-value token)))))
+   (assoc-input-value
+    (t/make-token (in/source stream)
+                  begin-pos
+                  (- end-pos begin-pos)
+                  parsed-value))))
+
+(defn merge-tokens [nodes]
+  (let [tokens (vec (keep #(-> % meta :token) nodes))]
+    (when (seq tokens)
+      (let [first-token (first tokens)
+            last-token (peek tokens)]
+        (assoc-input-value
+         (t/make-token (t/source first-token)
+                       (t/start first-token)
+                       (- (t/stop last-token)
+                          (t/start first-token))
+                       nodes))))))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Line parsers
@@ -463,19 +478,21 @@
                  :open? open?
                  :close? close?}
                 assoc :token (when token
-                               (t/make-token (t/source token)
-                                             (t/start token)
-                                             n
-                                             nil)))
+                               (assoc-input-value
+                                (t/make-token (t/source token)
+                                              (t/start token)
+                                              n
+                                              nil))))
      (vary-meta {:type ::delimiter
                  :text (subs text n)
                  :open? open?
                  :close? close?}
                 assoc :token (when token
-                               (t/make-token (t/source token)
-                                             (+ (t/start token) n)
-                                             (- (count text) n)
-                                             nil)))]))
+                               (assoc-input-value
+                                (t/make-token (t/source token)
+                                              (+ (t/start token) n)
+                                              (- (count text) n)
+                                              nil))))]))
 
 (defn- find-last-index [items pred] 
   (loop [idx (dec (count items))]
@@ -559,8 +576,7 @@
                  [new-open open] (split-delimiter-at open (- open-count emph-count))
                  [close new-close] (split-delimiter-at close emph-count)
                  emph (vary-meta (apply doc/emphasis (ensure-no-delimiter-left-behind content))
-                                 ; TODO(Richo): Merge tokens!
-                                 assoc :token [open content close])
+                                 assoc :token (merge-tokens [open content close]))
                  pre (subvec inlines
                              0
                              (min opener-idx (count inlines)))
@@ -590,67 +606,6 @@
                   inlines)))))))
 (comment
   (parse "texto **énfasis*\ntexto *énfasis**")
-  (def current-pos 0)
-  (def openers-bottom 0)
-  (def inlines [{:type :ssgr.doc/text, :text "texto "} 
-                {:type :ssgr.parser/delimiter, :text "**", :open? true, :close? false} ; 1
-                {:type :ssgr.doc/text, :text "énfasis"}
-                {:type :ssgr.parser/delimiter, :text "*", :open? false, :close? true}  ; 3
-                {:type :ssgr.doc/soft-break}
-                {:type :ssgr.doc/text, :text "texto "}
-                {:type :ssgr.parser/delimiter, :text "*", :open? true, :close? false}
-                {:type :ssgr.doc/text, :text "énfasis"}
-                {:type :ssgr.parser/delimiter, :text "**", :open? false, :close? true}])
-  [1 3]
-
-  (def current-pos 3)
-  (def openers-bottom 0)
-  (def inlines [{:type :ssgr.doc/text, :text "texto "} 
-                {:type :ssgr.parser/delimiter, :text "*", :open? true, :close? false}
-                {:type :ssgr.doc/emphasis, :text [{:type :ssgr.doc/text, :text "énfasis"}]}
-                {:type :ssgr.parser/delimiter, :text "", :open? false, :close? true} 
-                {:type :ssgr.doc/soft-break} 
-                {:type :ssgr.doc/text, :text "texto "}
-                {:type :ssgr.parser/delimiter, :text "*", :open? true, :close? false} ; 6
-                {:type :ssgr.doc/text, :text "énfasis"}
-                {:type :ssgr.parser/delimiter, :text "**", :open? false, :close? true} ; 8
-                ])
-  [6 8]
-  
-  (def current-pos 8)
-  (def openers-bottom 0)
-  (def inlines [{:type :ssgr.doc/text, :text "texto "} 
-                {:type :ssgr.parser/delimiter, :text "*", :open? true, :close? false} ; 1
-                {:type :ssgr.doc/emphasis, :text [{:type :ssgr.doc/text, :text "énfasis"}]} 
-                {:type :ssgr.parser/delimiter, :text "", :open? false, :close? true} 
-                {:type :ssgr.doc/soft-break} 
-                {:type :ssgr.doc/text, :text "texto "} 
-                {:type :ssgr.parser/delimiter, :text "", :open? true, :close? false} 
-                {:type :ssgr.doc/emphasis, :text [{:type :ssgr.doc/text, :text "énfasis"}]} 
-                {:type :ssgr.parser/delimiter, :text "*", :open? false, :close? true} ; 8
-                ])
-  [1 8]
-  
-  (def current-pos 8)
-  (def openers-bottom 0)
-  (def inlines [{:type :ssgr.doc/text, :text "texto "} 
-                {:type :ssgr.parser/delimiter, :text "", :open? true, :close? false} 
-                {:type :ssgr.doc/emphasis, :text [{:type :ssgr.doc/emphasis, :text [{:type :ssgr.doc/text, :text "énfasis"}]} {:type :ssgr.parser/delimiter, :text "", :open? false, :close? true} {:type :ssgr.doc/soft-break} {:type :ssgr.doc/text, :text "texto "} {:type :ssgr.parser/delimiter, :text "", :open? true, :close? false} {:type :ssgr.doc/emphasis, :text [{:type :ssgr.doc/text, :text "énfasis"}]}]} 
-                {:type :ssgr.parser/delimiter, :text "", :open? false, :close? true}])
-  
-  {:blocks
-   [{:elements [{:text "texto ", :type :ssgr.doc/text}
-                {:text [{:text [{:text "énfasis", :type :ssgr.doc/text}], :type :ssgr.doc/emphasis}
-                        {:close? true, :open? false, :text "", :type :ssgr.parser/delimiter}
-                        {:type :ssgr.doc/soft-break} {:text "texto ", :type :ssgr.doc/text}
-                        {:close? false, :open? true, :text "", :type :ssgr.parser/delimiter}
-                        {:text [{:text "énfasis", :type :ssgr.doc/text}], :type :ssgr.doc/emphasis}],
-                 :type :ssgr.doc/emphasis}],
-     :type :ssgr.doc/paragraph}],
-   :type :ssgr.doc/document}
-
-
-
   (parse "texto **énfasis*\ntexto *énfasis**")
   (def inlines (-> (parse "texto **énfasis***") :blocks first :elements))
   (process-emphasis inlines)
@@ -669,25 +624,6 @@
 
   (tap> *1)
   (tap> *e)
-  )
-
-(comment
-
-  (def inlines (-> (parse "*foo* texto _sin_ énfasis **bar**") :blocks first :elements))
-  (tap> *1)
-  (find-first-closer inlines 0)
-  (find-potential-opener inlines 6 0)
-  (process-emphasis inlines)
-
-  (next-emphasis-group (-> (parse "foo bar") :blocks first :elements)
-                       0 0)
-
-
-
-
-
-  (tap> *1)
-
   )
 
 (defn- look-for-link-or-image! [stream inlines close-delimiter]
@@ -922,7 +858,9 @@
   (let [stream (in/make-stream src)
         blocks (parse-blocks! stream)]
     (vary-meta (apply doc/document blocks)
-               assoc :token (t/make-token src 0 (count src) nil))))
+               assoc :token
+               (assoc-input-value
+                (t/make-token src 0 (count src) nil)))))
 
 (comment
   (let [delimiters (atom [])]
