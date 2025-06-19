@@ -460,7 +460,9 @@
   (is (= (p/parse "textoo_énfasis_")
          (d/document
           (d/paragraph (d/text "textoo")
-                       (d/emphasis (d/text "énfasis")))))
+                       (d/text "_")
+                       (d/text "énfasis")
+                       (d/text "_"))))
       "case-2a")
   (is (= (p/parse "texto _+énfasis_")
          (d/document
@@ -487,7 +489,7 @@
                        (d/text "*"))))
       "bad-case 2"))
 
-(deftest emphasis-with-unmatching-delimiters ; FAILING
+(deftest emphasis-with-unmatching-delimiters
   (is (= (p/parse "texto **énfasis*")
          (d/document
           (d/paragraph (d/text "texto ")
@@ -548,6 +550,62 @@
                          (d/text "Hello")
                          (d/emphasis
                           (d/text "world")))))))))
+
+(deftest intraword-emphasis
+  (is (= (p/parse "wb_robot_step")
+         (d/document
+          (d/paragraph (d/text "wb")
+                       (d/text "_")
+                       (d/text "robot")
+                       (d/text "_")
+                       (d/text "step"))))
+      "Invalid for _")
+  (is (= (p/parse "wb*robot*step")
+         (d/document
+          (d/paragraph (d/text "wb")
+                       (d/emphasis
+                        (d/text "robot"))
+                       (d/text "step"))))
+      "Only valid for *"))
+
+(deftest emphasis-rule-4
+  (is (= (p/parse "_foo bar _")
+         (d/document
+          (d/paragraph (d/text "_")
+                       (d/text "foo bar ")
+                       (d/text "_"))))
+      "Example 371")
+  (is (= (p/parse "_(_foo)")
+         (d/document 
+          (d/paragraph (d/text "_")
+                       (d/text "(")
+                       (d/text "_")
+                       (d/text "foo)"))))
+      "Example 372")
+  (is (= (p/parse "_(_foo_)_")
+         (d/document
+          (d/paragraph
+           (d/emphasis (d/text "(")
+                       (d/emphasis
+                        (d/text "foo"))
+                       (d/text ")")))))
+      "Example 373")
+  (is (= (p/parse "_foo_bar")
+         (d/document
+          (d/paragraph (d/text "_")
+                       (d/text "foo")
+                       (d/text "_")
+                       (d/text "bar"))))
+      "Example 374")
+  (is (= (p/parse "_foo_bar_baz_")
+         (d/document
+          (d/paragraph
+           (d/emphasis (d/text "foo")
+                       (d/text "_")
+                       (d/text "bar")
+                       (d/text "_")
+                       (d/text "baz")))))
+      "Example 376"))
 
 (comment 
   

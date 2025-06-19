@@ -437,7 +437,9 @@
     {:type ::delimiter
      :text (str/join chars)
      :open? (can-open? prev-char next-char)
-     :close? (can-close? prev-char next-char)}))
+     :close? (can-close? prev-char next-char)
+     :prev-char prev-char
+     :next-char next-char}))
 
 (defn parse-delimiter!
   "When we’re parsing inlines and we hit either a run of * or _ characters, or a [ or ![
@@ -472,22 +474,16 @@
       (vary-meta delimiter assoc
                  :token (make-token stream begin-pos nil)))))
 
-(defn split-delimiter-at [{:keys [text open? close?] :as delimiter} n]
+(defn split-delimiter-at [{:keys [text] :as delimiter} n]
   (let [token (-> delimiter meta :token)]
-    [(vary-meta {:type ::delimiter
-                 :text (subs text 0 n)
-                 :open? open?
-                 :close? close?}
+    [(vary-meta (assoc delimiter :text (subs text 0 n))
                 assoc :token (when token
                                (assoc-input-value
                                 (t/make-token (t/source token)
                                               (t/start token)
                                               n
                                               nil))))
-     (vary-meta {:type ::delimiter
-                 :text (subs text n)
-                 :open? open?
-                 :close? close?}
+     (vary-meta (assoc delimiter :text (subs text n))
                 assoc :token (when token
                                (assoc-input-value
                                 (t/make-token (t/source token)
@@ -523,9 +519,14 @@
      (when-let [{:keys [type] :as inline} (nth inlines idx nil)]
        (if (and (= ::delimiter type)
                 (:close? inline)
-                (#{\* \_} (first (:text inline))))
+                (#{\* \_} (first (:text inline)))
+                (or (= \* (first (:text inline)))
+                    (not (:open? inline))
+                    (unicode-punctuation-character? (:next-char inline))))
          idx
          (recur (inc idx)))))))
+
+"A single _ character can close emphasis iff it is part of a right-flanking delimiter run and either (a) not part of a left-flanking delimiter run or (b) part of a left-flanking delimiter run followed by a Unicode punctuation character."
 
 (defn- find-potential-opener [inlines closer-idx openers-bottom]
   (let [closer (nth inlines closer-idx)
@@ -545,7 +546,10 @@
             (if (and (= ::delimiter (:type opener))
                      (:open? opener)
                      (= closer-char (first (:text opener)))
-                     (not odd-match?))
+                     (not odd-match?)
+                     (or (= \* (first (:text opener)))
+                         (not (:close? opener))
+                         (unicode-punctuation-character? (:prev-char opener))))
               idx
               (recur (dec idx)))))))))
 
@@ -562,13 +566,15 @@
    (loop [current-pos 0
           openers-bottom 0
           inlines inlines]
-     ;(println "")
-     ;(println "(def current-pos" current-pos ")")
-     ;(println "(def openers-bottom" openers-bottom ")")
-     ;(println "(def inlines" (pr-str inlines) ")")
+     (when false
+       (println "")
+       (println "(def current-pos" current-pos ")")
+       (println "(def openers-bottom" openers-bottom ")")
+       (println "(def inlines" (pr-str inlines) ")"))
      (if (>= current-pos (count inlines))
        inlines
        (let [[opener-idx closer-idx] (next-emphasis-group inlines current-pos openers-bottom)]
+         ;(println [opener-idx closer-idx])
          (cond
            ; We found both a closer and an opener
            (and (some? opener-idx)
@@ -616,7 +622,7 @@
                   (count inlines)
                   inlines)))))))
 (comment
-  (parse "*****Hello*world****")
+  (parse "_foo_bar_baz_")
   
   
   (parse "_*__foo*__")
