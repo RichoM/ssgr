@@ -13,8 +13,8 @@
 
 (defmethod render* ::doc/heading [{:keys [level elements]}]
   ; TODO(Richo): If all elements are text we should avoid the spans
-  (vec (concat [(keyword (str \h level))]
-               (map render elements))))
+  (apply conj [(keyword (str \h level))]
+         (map render elements)))
 
 (defmethod render* ::doc/clojure [{:keys [result]}]
   result)
@@ -29,8 +29,8 @@
     url))
 
 (defmethod render* ::doc/link [{:keys [text destination]}]
-  (vec (concat [:a {:href (fix-url destination)}]
-               (map render text))))
+  (apply conj [:a {:href (fix-url destination)}]
+         (map render text)))
 
 (defmethod render* ::doc/image [{:keys [src description]}]
   [:img {:src src :alt (str/join (keep doc/as-text description))}])
@@ -38,7 +38,7 @@
 (defmethod render* ::doc/paragraph [{:keys [elements]}]
   (let [rendered-elements (keep render elements)]
     (when (seq rendered-elements)
-      (vec (concat [:p] rendered-elements)))))
+      (apply conj [:p] rendered-elements))))
 
 (defmethod render* ::doc/code-block [{:keys [info text]}]
   [:pre [:code {:class info} text]])
@@ -58,17 +58,17 @@
 (defmethod render* ::doc/emphasis [{:keys [text]}]
   (let [rendered-elements (keep render text)]
     (when (seq rendered-elements)
-      (vec (concat [:em] rendered-elements)))))
+      (apply conj [:em] rendered-elements))))
 
 (defmethod render* ::doc/strong-emphasis [{:keys [text]}]
   (let [rendered-elements (keep render text)]
     (when (seq rendered-elements)
-      (vec (concat [:strong] rendered-elements)))))
+      (apply conj [:strong] rendered-elements))))
 
 (defmethod render* ::doc/document [{:keys [blocks]}] 
   (let [rendered-blocks (keep render blocks)]
     (when (seq rendered-blocks)
-      (vec (concat [:div] rendered-blocks)))))
+      (apply conj [:div] rendered-blocks))))
 
 (defn render [element]
   (let [result (render* element)]
