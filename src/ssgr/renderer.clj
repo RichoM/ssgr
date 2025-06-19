@@ -60,6 +60,11 @@
     (when (seq rendered-elements)
       (vec (concat [:em] rendered-elements)))))
 
+(defmethod render* ::doc/strong-emphasis [{:keys [text]}]
+  (let [rendered-elements (keep render text)]
+    (when (seq rendered-elements)
+      (vec (concat [:strong] rendered-elements)))))
+
 (defmethod render* ::doc/document [{:keys [blocks]}] 
   (let [rendered-blocks (keep render blocks)]
     (when (seq rendered-blocks)
