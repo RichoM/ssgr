@@ -10,7 +10,8 @@
             [ssgr.eval :refer [eval-form]]))
 
 (defn assoc-input-value [token] ; TODO(Richo): Just for debugging purposes!
-  (assoc token :input-value (t/input-value token)))
+  #_(assoc token :input-value (t/input-value token))
+  token)
 
 (defn make-token
   "Utility function to make a token from the current position of a stream"
@@ -506,7 +507,6 @@
              assoc :token (-> delimiter meta :token)))
 
 (defn- ensure-no-delimiter-left-behind [inlines] ; TODO(Richo): This shouldn't be necessary!
-  ;inlines ; TODO(Richo): This is just for testing while I work on process-emphasis!
   (->> inlines
        (keep (fn [{:keys [type text] :as inline}]
                (if (= ::delimiter type)
@@ -558,19 +558,17 @@
 
 
 (defn- process-emphasis [inlines]
-  ;inlines
   (ensure-no-delimiter-left-behind
    (loop [current-pos 0
           openers-bottom 0
           inlines inlines]
-     (println "")
-     (println "(def current-pos" current-pos ")")
-     (println "(def openers-bottom" openers-bottom ")")
-     (println "(def inlines" (pr-str inlines) ")")
+     ;(println "")
+     ;(println "(def current-pos" current-pos ")")
+     ;(println "(def openers-bottom" openers-bottom ")")
+     ;(println "(def inlines" (pr-str inlines) ")")
      (if (>= current-pos (count inlines))
        inlines
        (let [[opener-idx closer-idx] (next-emphasis-group inlines current-pos openers-bottom)]
-         (println [opener-idx closer-idx])
          (cond
            ; We found both a closer and an opener
            (and (some? opener-idx)
@@ -605,13 +603,11 @@
            ; We found a closer but no matching opener
            (and (nil? opener-idx)
                 (some? closer-idx))
-           (do ;(println current-pos [opener-idx closer-idx])
-               ;(println result)
-             (recur (inc closer-idx)
-                    openers-bottom
-                    (if (:open? (nth inlines closer-idx))
-                      inlines
-                      (update inlines closer-idx delimiter->text))))
+           (recur (inc closer-idx)
+                  openers-bottom
+                  (if (:open? (nth inlines closer-idx))
+                    inlines
+                    (update inlines closer-idx delimiter->text)))
 
            ; We found neither
            (and (nil? opener-idx)
