@@ -24,10 +24,31 @@
     (drop-last 1 elements)
     elements))
 
+(declare text)
+
+(defn- merge-text [t1 t2]
+  (text (str (:text t1)
+             (:text t2))))
+
+(defn- compact-text-elements [elements]
+  (vec elements)
+  #_(reduce (fn [acc next]
+            (if-let [last (peek acc)]
+              (if (and (= ::text (:type last))
+                       (= ::text (:type next)))
+                (-> acc
+                    (pop)
+                    (conj (merge-text last next)))
+                (conj acc next))
+              (conj acc next)))
+          []
+          elements))
+
 (defn heading [level & elements]
   {:type ::heading
    :level level
-   :elements (trim-heading (remove-trailing-breaks elements))})
+   :elements (compact-text-elements 
+              (trim-heading (remove-trailing-breaks elements)))})
 
 (defn text [text]
   {:type ::text
@@ -46,11 +67,12 @@
 (defn image [src & description]
   {:type ::image
    :src src
-   :description (vec description)})
+   :description (compact-text-elements description)})
 
 (defn paragraph [& elements]
   {:type ::paragraph
-   :elements (vec (remove-trailing-breaks elements))})
+   :elements (compact-text-elements 
+              (remove-trailing-breaks elements))})
 
 (defn code-block [info text]
   {:type ::code-block
@@ -72,11 +94,11 @@
 
 (defn emphasis [& text]
   {:type ::emphasis
-   :text (vec text)})
+   :text (compact-text-elements text)})
 
 (defn strong-emphasis [& text]
   {:type ::strong-emphasis
-   :text (vec text)})
+   :text (compact-text-elements text)})
 
 (defn document [& blocks]
   {:type ::document
