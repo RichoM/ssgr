@@ -16,6 +16,21 @@
     (fs/create-dirs parent))
   (spit (fs/file path) contents))
 
+(defn delete-path! [path]
+  (try
+    (fs/delete path)
+    (catch Exception ex
+      (println "Couldn't delete file" (ex-message ex)))))
+
+(defn delete-all! [target-dir]
+  (fs/walk-file-tree target-dir
+                     {:visit-file (fn [path _]
+                                    (delete-path! path)
+                                    :continue)
+                      :post-visit-dir (fn [path _]
+                                        (delete-path! path)
+                                        :continue)}))
+
 (defn process-file! [path out]
   (try
     (let [text (slurp (fs/file path))
@@ -39,7 +54,7 @@
   (println "Looking for files on" src)
   (let [src (fs/path src)
         out (fs/path out)]
-    (fs/delete-tree out)
+    (delete-all! out)
     (e/reset-callbacks!)
     (let [files (list-files src)
           begin-time (System/nanoTime)]
@@ -67,8 +82,8 @@
   (-main "D:\\RichoM\\rescuesim\\rescuesim-intro" "out")
   (-main "D:\\RichoM\\CV\\src" "out")
 
-  (def src "D:\\RichoM\\CV\\src")
-  (def out "D:\\RichoM\\CV\\out")
+  (def src (fs/path "test-files"))
+  (def out (fs/path "out"))
   (def path (second (list-files "D:\\RichoM\\CV\\src")))
   )
 
