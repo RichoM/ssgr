@@ -513,7 +513,41 @@
           (d/paragraph (d/emphasis
                         (d/strong-emphasis
                          (d/strong-emphasis
+                          (d/text "texto"))))))))
+  (is (= (p/parse "*****texto******")
+         (d/document
+          (d/paragraph (d/emphasis
+                        (d/strong-emphasis
+                         (d/strong-emphasis
+                          (d/text "texto"))))
+                       (d/text "*")))))
+  (is (= (p/parse "******texto*****")
+         (d/document
+          (d/paragraph (d/text "*")
+                       (d/emphasis
+                        (d/strong-emphasis
+                         (d/strong-emphasis
                           (d/text "texto")))))))))
+
+(deftest mixing-emph-symbols
+  (is (= (p/parse "_*__foo*__")
+         (d/document
+          (d/paragraph
+           (d/emphasis
+            (d/emphasis
+             (d/text "__")
+             (d/text "foo")))
+           (d/text "_"))))))
+
+(deftest emphasis-rules-9-10
+  (is (= (p/parse "*****Hello*world****")
+         (d/document
+          (d/paragraph (d/text "**")
+                       (d/emphasis
+                        (d/strong-emphasis
+                         (d/text "Hello")
+                         (d/emphasis
+                          (d/text "world")))))))))
 
 (comment 
   

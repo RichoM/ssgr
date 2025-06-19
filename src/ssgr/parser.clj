@@ -532,12 +532,22 @@
         closer-char (first (:text closer))]
     (loop [idx (dec closer-idx)]
       (when (>= idx openers-bottom)
-        (when-let [{:keys [type] :as inline} (nth inlines idx nil)]
-          (if (and (= ::delimiter type)
-                   (:open? inline)
-                   (= closer-char (first (:text inline))))
-            idx
-            (recur (dec idx))))))))
+        (when-let [opener (nth inlines idx nil)]
+          (let [odd-match? (and (or (:open? closer)
+                                    (:close? opener))
+                                (not= (-> opener :text count)
+                                      (-> closer :text count))
+                                (zero? (mod (+ (-> opener :text count)
+                                               (-> closer :text count))
+                                            3))
+                                (or (pos? (mod (-> opener :text count) 3))
+                                    (pos? (mod (-> closer :text count) 3))))]
+            (if (and (= ::delimiter (:type opener))
+                     (:open? opener)
+                     (= closer-char (first (:text opener)))
+                     (not odd-match?))
+              idx
+              (recur (dec idx)))))))))
 
 (defn next-emphasis-group [inlines current-pos openers-bottom]
   (if-let [closer-idx (find-first-closer inlines current-pos)]
@@ -575,9 +585,9 @@
                               2 1)
                  [new-open open] (split-delimiter-at open (- open-count emph-count))
                  [close new-close] (split-delimiter-at close emph-count)
-                 emph (vary-meta (apply (if (= 2 emph-count) 
+                 emph (vary-meta (apply (if (= 2 emph-count)
                                           doc/strong-emphasis
-                                          doc/emphasis) 
+                                          doc/emphasis)
                                         (ensure-no-delimiter-left-behind content))
                                  assoc :token (merge-tokens [open content close]))
                  pre (subvec inlines
@@ -588,7 +598,7 @@
                  new-inlines (vec (concat pre
                                           [new-open emph new-close]
                                           post))]
-             (recur closer-idx
+             (recur (+ 2 opener-idx)
                     openers-bottom
                     new-inlines))
 
@@ -598,8 +608,10 @@
            (do ;(println current-pos [opener-idx closer-idx])
                ;(println result)
              (recur (inc closer-idx)
-                    closer-idx
-                    inlines))
+                    openers-bottom
+                    (if (:open? (nth inlines closer-idx))
+                      inlines
+                      (update inlines closer-idx delimiter->text))))
 
            ; We found neither
            (and (nil? opener-idx)
@@ -608,7 +620,10 @@
                   (count inlines)
                   inlines)))))))
 (comment
-  (parse "texto **énfasis*\ntexto *énfasis**")
+  (parse "*****Hello*world****")
+  
+  
+  (parse "_*__foo*__")
   (parse "texto **énfasis*\ntexto *énfasis**")
   (def inlines (-> (parse "texto **énfasis***") :blocks first :elements))
   (process-emphasis inlines)
