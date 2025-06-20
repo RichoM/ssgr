@@ -16,7 +16,9 @@
                                   [org.clojars.beppu/clj-audio "0.3.0"]
                                   [djblue/portal "0.59.1"]]
                    :resource-paths ["sounds"]
-                   :plugins [[com.jakemccrary/lein-test-refresh "0.24.1"]]}
+                   :plugins [[com.jakemccrary/lein-test-refresh "0.24.1"]]
+                   :global-vars {*unchecked-math* :warn-on-boxed
+                                 *warn-on-reflection* true}}
              :uberjar {:aot [ssgr.core]
                        :jvm-opts ["-Dclojure.compiler.direct-linking=true"
                                   "-Dclojure.compiler.elide-meta=[:doc :file :line :added]"]}})
