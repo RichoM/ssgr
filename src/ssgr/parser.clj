@@ -865,5 +865,4 @@
          (t/make-token src 0 (count src) nil))))))
 
 (defn parse-file [file options]
-  (println (str file))
   (parse (slurp file) options))
