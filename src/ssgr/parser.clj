@@ -24,7 +24,7 @@
                begin-pos
                (in/position stream)
                parsed-value))
-  ([stream begin-pos end-pos parsed-value]
+  ([stream ^long begin-pos ^long end-pos parsed-value]
    (assoc-input-value
     (t/make-token (in/source stream)
                   begin-pos
@@ -39,8 +39,8 @@
         (assoc-input-value
          (t/make-token (t/source first-token)
                        (t/start first-token)
-                       (- (t/stop last-token)
-                          (t/start first-token))
+                       (- ^long (t/stop last-token)
+                          ^long (t/start first-token))
                        nodes))))))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -180,7 +180,7 @@
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Clojure parser
 
-(defn find-line-idx [string line-number]
+(defn find-line-idx ^long [string ^long line-number]
   (loop [[line & rest] (str/split string #"\n" line-number)
          line-idx 0
          line-count 1]
@@ -194,9 +194,9 @@
   (let [^long line-number (e/get-line-number reader)
         ^long column-number (e/get-column-number reader)
         line-position (find-line-idx source line-number)
-        ^long position (+ (in/position stream)
-                          line-position
-                          (dec column-number))]
+        position (+ (in/position stream)
+                    line-position
+                    (dec column-number))]
     (in/reset-position! stream position)))
 
 (defn eval-clojure [form]
@@ -394,7 +394,7 @@
      :stop (inc (in/position stream))
      :text (str (in/next! stream))}))
 
-(defn append-text [inline-text stream chars stop]
+(defn append-text [inline-text stream chars ^long stop]
   (if inline-text
     (-> inline-text
         (update :text #(str % (apply str chars)))
@@ -405,7 +405,7 @@
      :text (apply str chars)}))
 
 (defn close-text [inline-text]
-  (when-let [{:keys [stream start stop text]} inline-text]
+  (when-let [{:keys [stream ^long start ^long stop text]} inline-text]
     (when (> stop start)
       (vary-meta (doc/text text)
                  assoc :token (make-token stream start stop text)))))
@@ -478,7 +478,8 @@
       (vary-meta delimiter assoc
                  :token (make-token stream begin-pos nil)))))
 
-(defn split-delimiter-at [{:keys [text] :as delimiter} n]
+(defn split-delimiter-at 
+  [{:keys [text] :as delimiter} ^long n]
   (let [token (-> delimiter meta :token)]
     [(vary-meta (assoc delimiter :text (subs text 0 n))
                 assoc :token (when token
@@ -491,16 +492,17 @@
                 assoc :token (when token
                                (assoc-input-value
                                 (t/make-token (t/source token)
-                                              (+ (t/start token) n)
+                                              (+ ^long (t/start token) n)
                                               (- (count text) n)
                                               nil))))]))
 
-(defn- find-last-index [items pred] 
+(defn- find-last-index ^long [items pred] 
   (loop [idx (dec (count items))]
-    (when (>= idx 0)
+    (if (>= idx 0)
       (if (pred (nth items idx))
         idx
-        (recur (dec idx))))))
+        (recur (dec idx)))
+      -1)))
 
 (defn delimiter->text [delimiter]
   (vary-meta (doc/text (:text delimiter))
@@ -518,7 +520,7 @@
 
 (defn- find-first-closer 
   ([inlines] (find-first-closer inlines 0))
-  ([inlines current-pos]
+  ([inlines ^long current-pos]
    (loop [idx current-pos]
      (when-let [{:keys [type] :as inline} (nth inlines idx nil)]
        (if (and (= ::delimiter type)
@@ -532,26 +534,26 @@
 
 "A single _ character can close emphasis iff it is part of a right-flanking delimiter run and either (a) not part of a left-flanking delimiter run or (b) part of a left-flanking delimiter run followed by a Unicode punctuation character."
 
-(defn- find-potential-opener [inlines closer-idx openers-bottom]
+(defn- find-potential-opener [inlines ^long closer-idx ^long openers-bottom]
   (let [closer (nth inlines closer-idx)
-        closer-char (first (:text closer))]
+        closer-char (first (:text closer))
+        closer-count (-> closer :text count)]
     (loop [idx (dec closer-idx)]
       (when (>= idx openers-bottom)
         (when-let [opener (nth inlines idx nil)]
-          (let [odd-match? (and (or (:open? closer)
+          (let [opener-char (first (:text opener))
+                opener-count (-> opener :text count)
+                odd-match? (and (or (:open? closer)
                                     (:close? opener))
-                                (not= (-> opener :text count)
-                                      (-> closer :text count))
-                                (zero? (mod (+ (-> opener :text count)
-                                               (-> closer :text count))
-                                            3))
-                                (or (pos? (mod (-> opener :text count) 3))
-                                    (pos? (mod (-> closer :text count) 3))))]
+                                (not= opener-count closer-count)
+                                (zero? ^long (mod (+ opener-count closer-count) 3))
+                                (or (pos? ^long (mod opener-count 3))
+                                    (pos? ^long (mod closer-count 3))))]
             (if (and (= ::delimiter (:type opener))
                      (:open? opener)
-                     (= closer-char (first (:text opener)))
+                     (= closer-char opener-char)
                      (not odd-match?)
-                     (or (= \* (first (:text opener)))
+                     (or (= \* opener-char)
                          (not (:close? opener))
                          (unicode-punctuation-character? (:prev-char opener))))
               idx
@@ -561,8 +563,8 @@
   (if-let [closer-idx (find-first-closer inlines current-pos)]
     (if-let [opener-idx (find-potential-opener inlines closer-idx openers-bottom)]
       [opener-idx closer-idx]
-      [nil closer-idx])
-    [nil nil]))
+      [-1 closer-idx])
+    [-1 -1]))
 
 
 (defn- process-emphasis [inlines]
@@ -577,13 +579,14 @@
        (println "(def inlines" (pr-str inlines) ")"))
      (if (>= current-pos (count inlines))
        inlines
-       (let [[opener-idx closer-idx] (next-emphasis-group inlines current-pos openers-bottom)]
+       (let [[^long opener-idx ^long closer-idx] 
+             (next-emphasis-group inlines current-pos openers-bottom)]
          (when *debug-verbose-emphasis*
            (println [opener-idx closer-idx]))
          (cond
            ; We found both a closer and an opener
-           (and (some? opener-idx)
-                (some? closer-idx))
+           (and (>= opener-idx 0)
+                (>= closer-idx 0))
            (let [open (nth inlines opener-idx)
                  content (subvec inlines (inc opener-idx) closer-idx)
                  close (nth inlines closer-idx)
@@ -607,25 +610,26 @@
                  new-inlines (vec (concat pre
                                           [new-open emph new-close]
                                           post))]
-             (recur (+ 2 opener-idx)
+             (recur (+ 2 ^long opener-idx)
                     openers-bottom
                     new-inlines))
 
            ; We found a closer but no matching opener
-           (and (nil? opener-idx)
-                (some? closer-idx))
-           (recur (inc closer-idx)
+           (and (< opener-idx 0)
+                (>= closer-idx 0))
+           (recur (inc ^long closer-idx)
                   openers-bottom
                   (if (:open? (nth inlines closer-idx))
                     inlines
                     (update inlines closer-idx delimiter->text)))
 
            ; We found neither
-           (and (nil? opener-idx)
-                (nil? closer-idx))
+           (and (< opener-idx 0)
+                (< closer-idx 0))
            (recur (count inlines)
                   (count inlines)
                   inlines)))))))
+
 (comment
   (parse "_foo_bar_baz_" {:debug {:verbose-emphasis? true}}) 
   
@@ -652,8 +656,9 @@
   )
 
 (defn- look-for-link-or-image! [stream inlines close-delimiter]
-  (let [begin-pos (in/position stream)]
-    (if-let [idx (find-last-index inlines (comp #{"[" "!["} :text))] 
+  (let [begin-pos (in/position stream)
+        idx (find-last-index inlines (comp #{"[" "!["} :text))]
+    (if (>= idx 0) 
       (let [open-delimiter (nth inlines idx)]
         (if (= ::delimiter (:type open-delimiter))
           (if-let [link-destination (parse-link-destination! stream)]
