@@ -235,7 +235,7 @@
           Character/MATH_SYMBOL
           Character/MODIFIER_SYMBOL
           Character/OTHER_SYMBOL}
-        #(Character/getType %)))
+        #(Character/getType ^char %)))
 
 (defn- unicode-whitespace-character?
   "A Unicode whitespace character is a character in the Unicode Zs general category, 
