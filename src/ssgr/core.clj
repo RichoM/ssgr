@@ -7,11 +7,6 @@
             [ssgr.eval :as e])
   (:gen-class))
 
-(defn copy-file! [src dest]
-  (when-let [parent (fs/parent dest)]
-    (fs/create-dirs parent))
-  (fs/copy src dest))
-
 (defn write-file! [path contents]
   (when-let [parent (fs/parent path)]
     (fs/create-dirs parent))
@@ -32,8 +27,17 @@
                                         (delete-path! path)
                                         :continue)}))
 
+(defn copy-file! [src dest options]
+  (when (:verbose options)
+    (println (str src)))
+  (when-let [parent (fs/parent dest)]
+    (fs/create-dirs parent))
+  (fs/copy src dest))
+
 (defn process-file! [path out options]
   (try
+    (when (:verbose options)
+      (println (str path)))
     (let [doc (p/parse-file (fs/file path) options)
           hiccup (r/render doc)
           html (r/html hiccup)]
@@ -65,7 +69,7 @@
                (process-file! path out-path options))
         "clj" (process-file! path nil options)
         (let [out-path (str/replace-first path (str src) (str out))]
-          (copy-file! path out-path))))
+          (copy-file! path out-path options))))
     (let [end-time (System/nanoTime)]
       (println "DONE!")
       (println "Elapsed time:"
@@ -75,6 +79,8 @@
 
 (def cli-options
   [["-d" "--debug"
+    :default false]
+   ["-v" "--verbose"
     :default false]
    ["-h" "--help"]])
 
@@ -122,7 +128,7 @@
 (comment
   (use 'criterium.core)
 
-  (-main "test-files" "out")
+  (-main "-v" "test-files" "out")
 
   (require '[taoensso.tufte :as tufte])
   (tufte/add-basic-println-handler! {})
