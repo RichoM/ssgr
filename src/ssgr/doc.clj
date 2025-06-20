@@ -1,6 +1,8 @@
 (ns ssgr.doc 
   (:require [clojure.string :as str]))
 
+(def ^:dynamic *compact-text-elements* false)
+
 (defn- trim-heading [elements]
   (if (seq elements) ; Make sure it's not empty
     (->> (-> (vec elements)
@@ -31,18 +33,19 @@
              (:text t2))))
 
 (defn- compact-text-elements [elements]
-  (vec elements)
-  #_(reduce (fn [acc next]
-            (if-let [last (peek acc)]
-              (if (and (= ::text (:type last))
-                       (= ::text (:type next)))
-                (-> acc
-                    (pop)
-                    (conj (merge-text last next)))
-                (conj acc next))
-              (conj acc next)))
-          []
-          elements))
+  (if *compact-text-elements*
+    (reduce (fn [acc next]
+              (if-let [last (peek acc)]
+                (if (and (= ::text (:type last))
+                         (= ::text (:type next)))
+                  (-> acc
+                      (pop)
+                      (conj (merge-text last next)))
+                  (conj acc next))
+                (conj acc next)))
+            []
+            elements)
+    (vec elements)))
 
 (defn heading [level & elements]
   {:type ::heading

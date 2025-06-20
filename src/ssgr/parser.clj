@@ -9,9 +9,13 @@
             [ssgr.doc :as doc]
             [ssgr.eval :refer [eval-form]]))
 
-(defn assoc-input-value [token] ; TODO(Richo): Just for debugging purposes!
-  #_(assoc token :input-value (t/input-value token))
-  token)
+(def ^:dynamic *debug-verbose-emphasis* false)
+(def ^:dynamic *debug-verbose-tokens* false)
+
+(defn assoc-input-value [token]
+  (if *debug-verbose-tokens*
+    (assoc token :input-value (t/input-value token))
+    token))
 
 (defn make-token
   "Utility function to make a token from the current position of a stream"
@@ -566,7 +570,7 @@
    (loop [current-pos 0
           openers-bottom 0
           inlines inlines]
-     (when false
+     (when *debug-verbose-emphasis*
        (println "")
        (println "(def current-pos" current-pos ")")
        (println "(def openers-bottom" openers-bottom ")")
@@ -574,7 +578,8 @@
      (if (>= current-pos (count inlines))
        inlines
        (let [[opener-idx closer-idx] (next-emphasis-group inlines current-pos openers-bottom)]
-         ;(println [opener-idx closer-idx])
+         (when *debug-verbose-emphasis*
+           (println [opener-idx closer-idx]))
          (cond
            ; We found both a closer and an opener
            (and (some? opener-idx)
@@ -622,7 +627,7 @@
                   (count inlines)
                   inlines)))))))
 (comment
-  (parse "_foo_bar_baz_")
+  (parse "_foo_bar_baz_" {:debug {:verbose-emphasis? true}}) 
   
   
   (parse "_*__foo*__")
@@ -874,13 +879,18 @@
         (recur blocks))
       (persistent! blocks))))
 
-(defn parse [src]
-  (let [stream (in/make-stream src)
-        blocks (parse-blocks! stream)]
-    (vary-meta (apply doc/document blocks)
-               assoc :token
-               (assoc-input-value
-                (t/make-token src 0 (count src) nil)))))
+(defn parse
+  ([src] (parse src {}))
+  ([src config]
+   (binding [doc/*compact-text-elements* (:compact-text-elements? config)
+             *debug-verbose-emphasis* (-> config :debug :verbose-emphasis?)
+             *debug-verbose-tokens* (-> config :debug :verbose-tokens?)]
+     (let [stream (in/make-stream src)
+           blocks (parse-blocks! stream)]
+       (vary-meta (apply doc/document blocks)
+                  assoc :token
+                  (assoc-input-value
+                   (t/make-token src 0 (count src) nil)))))))
 
 (comment
   (let [delimiters (atom [])]
