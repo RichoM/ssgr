@@ -121,24 +121,15 @@
       (process! src out options))))
 
 (comment
-  
+  (use 'criterium.core)
+
   (-main "test-files" "out")
-  (-main "D:\\RichoM\\rescuesim\\rescuesim-intro" "out")
-  (-main "D:\\RichoM\\CV\\src" "out")
 
-  (def src (fs/path "test-files"))
-  (def out (fs/path "out"))
-  (def path (second (list-files "D:\\RichoM\\CV\\src")))
-  )
+  (require '[taoensso.tufte :as tufte])
+  (tufte/add-basic-println-handler! {})
+  (tufte/profile
+   {}
+   (-main "test-files" "out"))
 
-(comment
-  (def src "doc")
-  (def out "out")
-
-  (remove fs/directory? (file-seq (fs/file src)))
-
-
-  (list-files src)
-
-
+  @tufte/pstats
   )

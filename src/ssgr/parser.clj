@@ -7,7 +7,8 @@
             [edamame.core :as e]
             [hiccup.compiler :as h.c]
             [ssgr.doc :as doc]
-            [ssgr.eval :refer [eval-form]]))
+            [ssgr.eval :refer [eval-form]]
+            [taoensso.tufte :refer [defnp]]))
 
 (def ^:dynamic *debug-verbose-emphasis* false)
 (def ^:dynamic *debug-verbose-tokens* false)

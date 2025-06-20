@@ -14,6 +14,8 @@
   :target-path "target/%s"
   :profiles {:dev {:dependencies [[org.clojure/core.async "0.6.532"]
                                   [org.clojars.beppu/clj-audio "0.3.0"]
+                                  [criterium "0.4.6"]
+                                  [com.taoensso/tufte "2.7.0"]
                                   [djblue/portal "0.59.1"]]
                    :resource-paths ["sounds"]
                    :plugins [[com.jakemccrary/lein-test-refresh "0.24.1"]]
