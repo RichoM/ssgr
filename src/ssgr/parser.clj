@@ -3,7 +3,7 @@
             [petitparser.input-stream :as in]
             [petitparser.core :as pp]
             [petitparser.results :as r]
-            [petitparser.token :as t]
+            [ssgr.token :as t]
             [edamame.core :as e]
             [hiccup.compiler :as h.c]
             [ssgr.doc :as doc]
@@ -11,38 +11,6 @@
             [taoensso.tufte :refer [defnp]]))
 
 (def ^:dynamic *debug-verbose-emphasis* false)
-(def ^:dynamic *debug-verbose-tokens* false)
-
-(defn assoc-input-value [token]
-  (if *debug-verbose-tokens*
-    (assoc token :input-value (t/input-value token))
-    token))
-
-(defn make-token
-  "Utility function to make a token from the current position of a stream"
-  ([stream begin-pos parsed-value]
-   (make-token stream
-               begin-pos
-               (in/position stream)
-               parsed-value))
-  ([stream ^long begin-pos ^long end-pos parsed-value]
-   (assoc-input-value
-    (t/make-token (in/source stream)
-                  begin-pos
-                  (- end-pos begin-pos)
-                  parsed-value))))
-
-(defn merge-tokens [nodes]
-  (let [tokens (vec (keep #(-> % meta :token) nodes))]
-    (when (seq tokens)
-      (let [first-token (first tokens)
-            last-token (peek tokens)]
-        (assoc-input-value
-         (t/make-token (t/source first-token)
-                       (t/start first-token)
-                       (- ^long (t/stop last-token)
-                          ^long (t/start first-token))
-                       nodes))))))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Line parsers
@@ -63,8 +31,9 @@
 (defn transform-with-token [p f]
   (pp/transform (pp/token p)
                 (fn [token]
-                  (vary-meta (f (t/parsed-value token))
-                             assoc :token token))))
+                  (t/with-token
+                    (f (t/parsed-value token))
+                    token))))
 
 (def thematic-break
   (transform-with-token
@@ -215,8 +184,8 @@
               form (e/parse-next reader (e/normalize-opts {:all true}))
               result (eval-clojure form)]
           (advance-stream-to-match! stream reader src)
-          (vary-meta (doc/clojure form result)
-                     assoc :token (make-token stream begin-pos nil)))
+          (t/with-token (doc/clojure form result)
+            (t/stream->token stream begin-pos nil)))
         (catch Exception _
           (in/reset-position! stream begin-pos))))))
 
@@ -313,21 +282,22 @@
                 ; Anything else is appended to the content
                 (when next-char
                   (recur (conj! content (in/next! stream)))))))
-          token (make-token stream
-                            begin-pos
-                            [opening content closing])]
+          token (t/stream->token stream
+                                 begin-pos
+                                 [opening content closing])]
       (if content
-        (vary-meta (doc/code-span (let [text (str/join content)]
+        (t/with-token
+          (doc/code-span (let [text (str/join content)]
                                     ; If the resulting string both begins and ends 
                                     ; with a space character, but does not consist 
                                     ; entirely of space characters, a single space 
                                     ; character is removed from the front and back
-                                    (if (and (str/starts-with? text " ")
-                                             (str/ends-with? text " ")
-                                             (not (str/blank? text)))
-                                      (subs text 1 (dec (count text)))
-                                      text)))
-                   assoc :token token)
+                           (if (and (str/starts-with? text " ")
+                                    (str/ends-with? text " ")
+                                    (not (str/blank? text)))
+                             (subs text 1 (dec (count text)))
+                             text)))
+          token)
         (do (in/reset-position! stream begin-content)
             (doc/text (str/join opening)))))))
 
@@ -408,8 +378,8 @@
 (defn close-text [inline-text]
   (when-let [{:keys [stream ^long start ^long stop text]} inline-text]
     (when (> stop start)
-      (vary-meta (doc/text text)
-                 assoc :token (make-token stream start stop text)))))
+      (t/with-token (doc/text text)
+        (t/stream->token stream start stop text)))))
 
 (defn- can-open?
   "A left-flanking delimiter run is a delimiter run that is (1) not followed 
@@ -423,7 +393,7 @@
            (unicode-whitespace-character? prev-char)
            (unicode-punctuation-character? prev-char))))
 
-(defn- can-close? 
+(defn- can-close?
   "A right-flanking delimiter run is a delimiter run that is (1) not preceded 
      by Unicode whitespace, and either (2a) not preceded by a Unicode punctuation 
      character, or (2b) preceded by a Unicode punctuation character and followed 
@@ -476,28 +446,31 @@
                          :open? false
                          :close? true})
                  nil)]
-      (vary-meta delimiter assoc
-                 :token (make-token stream begin-pos nil)))))
+      (t/with-token
+        delimiter
+        (t/stream->token stream begin-pos (:text delimiter))))))
 
-(defn split-delimiter-at 
+(defn split-delimiter-at
   [{:keys [text] :as delimiter} ^long n]
-  (let [token (-> delimiter meta :token)]
-    [(vary-meta (assoc delimiter :text (subs text 0 n))
-                assoc :token (when token
-                               (assoc-input-value
-                                (t/make-token (t/source token)
-                                              (t/start token)
-                                              n
-                                              nil))))
-     (vary-meta (assoc delimiter :text (subs text n))
-                assoc :token (when token
-                               (assoc-input-value
-                                (t/make-token (t/source token)
-                                              (+ ^long (t/start token) n)
-                                              (- (count text) n)
-                                              nil))))]))
+  (let [token (-> delimiter meta :token)
+        l-text (subs text 0 n)
+        r-text (subs text n)]
+    [(t/with-token
+       (assoc delimiter :text l-text)
+       (when token
+         (t/make-token (t/source token)
+                       (t/start token)
+                       n
+                       l-text)))
+     (t/with-token
+       (assoc delimiter :text r-text)
+       (when token
+         (t/make-token (t/source token)
+                       (+ ^long (t/start token) n)
+                       (- (count text) n)
+                       r-text)))]))
 
-(defn- find-last-index ^long [items pred] 
+(defn- find-last-index ^long [items pred]
   (loop [idx (dec (count items))]
     (if (>= idx 0)
       (if (pred (nth items idx))
@@ -506,8 +479,8 @@
       -1)))
 
 (defn delimiter->text [delimiter]
-  (vary-meta (doc/text (:text delimiter))
-             assoc :token (-> delimiter meta :token)))
+  (t/with-token (doc/text (:text delimiter))
+    (-> delimiter meta :token)))
 
 (defn- ensure-no-delimiter-left-behind [inlines] ; TODO(Richo): This shouldn't be necessary!
   (->> inlines
@@ -519,7 +492,7 @@
                  inline)))
        (vec)))
 
-(defn- find-first-closer 
+(defn- find-first-closer
   ([inlines] (find-first-closer inlines 0))
   ([inlines ^long current-pos]
    (loop [idx current-pos]
@@ -532,8 +505,6 @@
                     (unicode-punctuation-character? (:next-char inline))))
          idx
          (recur (inc idx)))))))
-
-"A single _ character can close emphasis iff it is part of a right-flanking delimiter run and either (a) not part of a left-flanking delimiter run or (b) part of a left-flanking delimiter run followed by a Unicode punctuation character."
 
 (defn- find-potential-opener [inlines ^long closer-idx ^long openers-bottom]
   (let [closer (nth inlines closer-idx)
@@ -567,7 +538,6 @@
       [-1 closer-idx])
     [-1 -1]))
 
-
 (defn- process-emphasis [inlines]
   (ensure-no-delimiter-left-behind
    (loop [current-pos 0
@@ -580,7 +550,7 @@
        (println "(def inlines" (pr-str inlines) ")"))
      (if (>= current-pos (count inlines))
        inlines
-       (let [[^long opener-idx ^long closer-idx] 
+       (let [[^long opener-idx ^long closer-idx]
              (next-emphasis-group inlines current-pos openers-bottom)]
          (when *debug-verbose-emphasis*
            (println [opener-idx closer-idx]))
@@ -598,11 +568,11 @@
                               2 1)
                  [new-open open] (split-delimiter-at open (- open-count emph-count))
                  [close new-close] (split-delimiter-at close emph-count)
-                 emph (vary-meta (apply (if (= 2 emph-count)
-                                          doc/strong-emphasis
-                                          doc/emphasis)
-                                        (ensure-no-delimiter-left-behind content))
-                                 assoc :token (merge-tokens [open content close]))
+                 emph (t/with-token (apply (if (= 2 emph-count)
+                                             doc/strong-emphasis
+                                             doc/emphasis)
+                                           (ensure-no-delimiter-left-behind content))
+                        (t/merge-tokens [open content close]))
                  pre (subvec inlines
                              0
                              (min opener-idx (count inlines)))
@@ -632,9 +602,11 @@
                   inlines)))))))
 
 (comment
-  (parse "_foo_bar_baz_" {:debug {:verbose-emphasis? true}}) 
-  
-  
+  (parse "_foo_bar_baz_" {:debug true})
+  (tap> *e)
+
+  (tap> *1)
+
   (parse "_*__foo*__")
   (parse "texto **énfasis*\ntexto *énfasis**")
   (def inlines (-> (parse "texto **énfasis***") :blocks first :elements))
@@ -653,13 +625,12 @@
           bar")
 
   (tap> *1)
-  (tap> *e)
-  )
+  (tap> *e))
 
 (defn- look-for-link-or-image! [stream inlines close-delimiter]
   (let [begin-pos (in/position stream)
         idx (find-last-index inlines (comp #{"[" "!["} :text))]
-    (if (>= idx 0) 
+    (if (>= idx 0)
       (let [open-delimiter (nth inlines idx)]
         (if (= ::delimiter (:type open-delimiter))
           (if-let [link-destination (parse-link-destination! stream)]
@@ -674,15 +645,14 @@
                                          inlines))]
               (-> before
                   (disable-open-links)
-                  (conj (vary-meta
-                         (if (= "[" (:text open-delimiter))
-                           (doc/link (process-emphasis after)
-                                     link-destination)
-                           (apply doc/image link-destination
-                                  (process-emphasis after)))
-                         assoc :token (make-token stream
-                                                  (-> open-delimiter meta :token t/start)
-                                                  [open-delimiter after close-delimiter link-destination])))))
+                  (conj (t/with-token (if (= "[" (:text open-delimiter))
+                                        (doc/link (process-emphasis after)
+                                                  link-destination)
+                                        (apply doc/image link-destination
+                                               (process-emphasis after)))
+                          (t/stream->token stream
+                                           (-> open-delimiter meta :token t/start)
+                                           [open-delimiter after close-delimiter link-destination])))))
             (do (in/reset-position! stream begin-pos)
                 (-> inlines
                     (update idx delimiter->text)
@@ -700,28 +670,27 @@
       (in/end? stream)
       (process-emphasis
        (condj inlines (close-text inline-text)))
-  
+
       (parse-escaped-characters! stream)
       (recur (condj inlines (close-text inline-text))
              (append-next! nil stream))
-  
+
       :else (let [begin-pos (in/position stream)]
               (if-let [[spaces backslash] (parse-line-breaks! stream)]
-                (let [token (make-token stream begin-pos [spaces backslash])
+                (let [token (t/stream->token stream begin-pos [spaces backslash])
                       inlines (if backslash
                                 (-> inlines
                                     (condj (-> inline-text
                                                (append-text stream spaces
                                                             (+ begin-pos (count spaces)))
                                                (close-text)))
-                                    (condj (vary-meta (doc/hard-break)
-                                                      assoc :token token)))
+                                    (condj (t/with-token (doc/hard-break) token)))
                                 (-> inlines
                                     (condj (close-text inline-text))
-                                    (condj (vary-meta (if (>= (count spaces) 2)
-                                                        (doc/hard-break)
-                                                        (doc/soft-break))
-                                                      assoc :token token))))]
+                                    (condj (t/with-token (if (>= (count spaces) 2)
+                                                           (doc/hard-break)
+                                                           (doc/soft-break))
+                                             token))))]
                   (if (contains? #{::paragraph ::indented-code-block} ; TODO(Richo): Check if this works for all inlines
                                  (:type (peek-line stream)))
                     (do (consume-chars! stream \space \tab)
@@ -739,7 +708,7 @@
                                                          (condj inlines (close-text inline-text))
                                                          delimiter)
                                 nil)
-  
+
                       (recur (-> inlines
                                  (condj (close-text inline-text))
                                  (condj delimiter))
@@ -752,16 +721,16 @@
 
 (defn parse-paragraph! [stream]
   (let [begin-pos (in/position stream)
-        make-token (fn [lines] (make-token stream begin-pos lines))
+        make-token (fn [lines] (t/stream->token stream begin-pos lines))
         make-paragraph (fn [lines]
-                         (vary-meta (apply doc/paragraph (apply concat lines))
-                                    assoc :token (make-token lines)))
+                         (t/with-token (apply doc/paragraph (apply concat lines))
+                           (make-token lines)))
         make-heading (fn [level lines]
-                       (vary-meta (apply doc/heading level
-                                         (->> lines
-                                              (interpose [(doc/soft-break)])
-                                              (apply concat)))
-                                  assoc :token (make-token lines)))]
+                       (t/with-token (apply doc/heading level
+                                            (->> lines
+                                                 (interpose [(doc/soft-break)])
+                                                 (apply concat)))
+                         (make-token lines)))]
     (loop [lines (transient [])]
       (let [{:keys [type] :as next-line} (peek-line stream)]
         (case type
@@ -801,8 +770,8 @@
 (defn parse-thematic-break! [stream]
   (let [begin-pos (in/position stream)
         line (next-line! stream)]
-    (vary-meta (doc/thematic-break)
-               assoc :token (make-token stream begin-pos line))))
+    (t/with-token (doc/thematic-break)
+      (t/stream->token stream begin-pos line))))
 
 (defn parse-atx-heading! [stream]
   (let [begin-pos (in/position stream)
@@ -812,8 +781,8 @@
     ; Skip any spaces or tabs before parsing the inline content
     (consume-chars! stream \space \tab)
     (let [inlines (parse-inlines! stream)]
-      (vary-meta (apply doc/heading level inlines)
-                 assoc :token (make-token stream begin-pos line)))))
+      (t/with-token (apply doc/heading level inlines)
+        (t/stream->token stream begin-pos line)))))
 
 (defn parse-blank-lines! [stream]
   (loop []
@@ -834,8 +803,8 @@
                     (persistent! lines))))
         line-contents (map #(-> % meta :token t/input-value (subs 4))
                            lines)]
-    (vary-meta (doc/code-block "" (str/join line-contents))
-               assoc :token (make-token stream begin-pos lines))))
+    (t/with-token (doc/code-block "" (str/join line-contents))
+      (t/stream->token stream begin-pos lines))))
 
 (defn parse-fenced-code-block! [stream]
   (let [begin-pos (in/position stream)
@@ -860,10 +829,10 @@
         ; the code blocks should preserve whatever the user typed
         line-contents (map #(-> % meta :token t/input-value)
                            lines)]
-    (vary-meta (doc/code-block (str/trim (:info-string opening))
-                               (str/join line-contents))
-               assoc :token (make-token stream begin-pos
-                                        [opening lines closing]))))
+    (t/with-token (doc/code-block (str/trim (:info-string opening))
+                                  (str/join line-contents))
+      (t/stream->token stream begin-pos
+                       [opening lines closing]))))
 
 (defn parse-block! [stream]
   (let [{:keys [type]} (peek-line stream)]
@@ -889,27 +858,8 @@
   ([src] (parse src {}))
   ([src options]
    (binding [*debug-verbose-emphasis* (:debug options)
-             *debug-verbose-tokens* (:debug options)]
+             t/*debug-verbose-tokens* (:debug options)]
      (let [stream (in/make-stream src)
            blocks (parse-blocks! stream)]
-       (vary-meta (apply doc/document blocks)
-                  assoc :token
-                  (assoc-input-value
-                   (t/make-token src 0 (count src) nil)))))))
-
-(comment
-  (let [delimiters (atom [])]
-    (clojure.walk/prewalk (fn [{:keys [type] :as e}]
-                            (when (= ::delimiter type)
-                              (swap! delimiters conj e))
-                            e)
-                          (parse (slurp "test-files\\04\\03_LIDAR.md")))
-    @delimiters)
-  (parse "![](03_LIDAR/imgs/image-3.png)")
-  (parse "[robot_lidar.json](03_LIDAR/robot_lidar.json)")
-  (tap> *1)
-
-  (subs (slurp "test-files\\04\\03_LIDAR.md")
-        833)
-
-  )
+       (t/with-token (apply doc/document blocks)
+         (t/make-token src 0 (count src) nil))))))
