@@ -1,5 +1,6 @@
 (ns ssgr.doc 
-  (:require [clojure.string :as str]))
+  (:require [clojure.string :as str]
+            [ssgr.token :as t]))
 
 (defn- trim-heading [elements]
   (if (seq elements) ; Make sure it's not empty
@@ -27,8 +28,10 @@
 (declare text)
 
 (defn- merge-text [t1 t2]
-  (text (str (:text t1)
-             (:text t2))))
+  (t/with-token
+    (text (str (:text t1)
+               (:text t2)))
+    (t/merge-tokens [t1 t2])))
 
 (defn- compact-text-elements [elements]
   (reduce (fn [acc next]
