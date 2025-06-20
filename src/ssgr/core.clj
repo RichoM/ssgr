@@ -1,6 +1,7 @@
 (ns ssgr.core
   (:require [babashka.fs :as fs]
             [clojure.string :as str]
+            [clojure.tools.cli :as cli]
             [ssgr.parser :as p]
             [ssgr.renderer :as r]
             [ssgr.eval :as e])
@@ -31,10 +32,10 @@
                                         (delete-path! path)
                                         :continue)}))
 
-(defn process-file! [path out]
+(defn process-file! [path out options]
   (try
     (let [text (slurp (fs/file path))
-          doc (p/parse text)
+          doc (p/parse text options)
           hiccup (r/render doc)
           html (r/html hiccup)]
       (when out 
@@ -49,32 +50,75 @@
                            (filter fs/directory?)
                            (mapcat list-files))))))
 
-(defn -main
-  [& [src out]]
-  (println "Looking for files on" src)
-  (let [src (fs/path src)
-        out (fs/path out)]
-    (delete-all! out)
-    (e/reset-callbacks!)
-    (let [files (list-files src)
-          begin-time (System/nanoTime)]
-      (println "Found" (count files) "files.")
-      (doseq [path files]
-        (case (fs/extension path)
-          "md" (let [out-path (-> path
-                                  (str/replace-first (str src) (str out))
-                                  (fs/strip-ext)
-                                  (str ".html"))]
-                 (process-file! path out-path))
-          "clj" (process-file! path nil)
-          (let [out-path (str/replace-first path (str src) (str out))]
-            (copy-file! path out-path))))
-      (let [end-time (System/nanoTime)]
-        (println "DONE!")
-        (println "Elapsed time:"
-                 (/ (double (- end-time begin-time))
-                    1000000.0)
-                 "ms")))))
+(defn process! [src out options]
+  (println "Looking for files on" (str src))
+  (delete-all! out)
+  (e/reset-callbacks!)
+  (let [files (list-files src)
+        begin-time (System/nanoTime)]
+    (println "Found" (count files) "files.")
+    (doseq [path files]
+      (case (fs/extension path)
+        "md" (let [out-path (-> path
+                                (str/replace-first (str src) (str out))
+                                (fs/strip-ext)
+                                (str ".html"))]
+               (process-file! path out-path options))
+        "clj" (process-file! path nil options)
+        (let [out-path (str/replace-first path (str src) (str out))]
+          (copy-file! path out-path))))
+    (let [end-time (System/nanoTime)]
+      (println "DONE!")
+      (println "Elapsed time:"
+               (/ (double (- end-time begin-time))
+                  1000000.0)
+               "ms"))))
+
+(def cli-options
+  [["-d" "--debug"
+    :default false]
+   ["-h" "--help"]])
+
+(defn usage [options-summary]
+  (->> ["Static Site Generator by Richo (SSGR)"
+        ""
+        "Usage: ssgr [options] in out"
+        ""
+        "Options:"
+        options-summary]
+       (str/join \newline)))
+
+(defn error-msg [errors]
+  (str "Error:\n\n"
+       (str/join \newline errors)))
+
+(defn validate-args [args]
+  (let [{:keys [arguments errors options summary]} (cli/parse-opts args cli-options)]
+    (cond
+      (:help options)
+      {:exit-message (usage summary) :ok? true}
+
+      errors
+      {:exit-message (error-msg errors)}
+
+      (>= (count arguments) 1)
+      (let [[src out] arguments]
+        {:src (fs/path src)
+         :out (fs/path (or out "out"))
+         :options options})
+      
+      :else
+      {:exit-message (usage summary)})))
+
+(defn exit [status msg]
+  (println msg)
+  (System/exit status))
+
+(defn -main [& args]
+  (let [{:keys [src out options exit-message ok?]} (validate-args args)]
+    (if exit-message
+      (exit (if ok? 0 1) exit-message)
+      (process! src out options))))
 
 (comment
   

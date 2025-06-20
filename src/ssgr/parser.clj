@@ -881,10 +881,9 @@
 
 (defn parse
   ([src] (parse src {}))
-  ([src config]
-   (binding [doc/*compact-text-elements* (:compact-text-elements? config)
-             *debug-verbose-emphasis* (-> config :debug :verbose-emphasis?)
-             *debug-verbose-tokens* (-> config :debug :verbose-tokens?)]
+  ([src options]
+   (binding [*debug-verbose-emphasis* (:debug options)
+             *debug-verbose-tokens* (:debug options)]
      (let [stream (in/make-stream src)
            blocks (parse-blocks! stream)]
        (vary-meta (apply doc/document blocks)
