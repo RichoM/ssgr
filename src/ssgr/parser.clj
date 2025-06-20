@@ -863,3 +863,7 @@
            blocks (parse-blocks! stream)]
        (t/with-token (apply doc/document blocks)
          (t/make-token src 0 (count src) nil))))))
+
+(defn parse-file [file options]
+  (println (str file))
+  (parse (slurp file) options))

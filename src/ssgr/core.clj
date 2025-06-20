@@ -34,8 +34,7 @@
 
 (defn process-file! [path out options]
   (try
-    (let [text (slurp (fs/file path))
-          doc (p/parse text options)
+    (let [doc (p/parse-file (fs/file path) options)
           hiccup (r/render doc)
           html (r/html hiccup)]
       (when out 
