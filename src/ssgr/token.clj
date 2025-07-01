@@ -10,6 +10,7 @@
 (def parsed-value t/parsed-value)
 
 (def ^:dynamic *debug-verbose-tokens* false)
+(def ^:dynamic *parser-file* nil)
 
 (defn assoc-input-value [token]
   (if *debug-verbose-tokens*
@@ -46,6 +47,7 @@
                       nodes))))))
 
 (defn with-token [node token]
-  (if token
-    (vary-meta node assoc :token (assoc-input-value token))
-    node))
+  (vary-meta (if token
+               (vary-meta node assoc :token (assoc-input-value token))
+               node)
+             assoc :file *parser-file*))

@@ -3,13 +3,14 @@
             [petitparser.input-stream :as in]
             [petitparser.core :as pp]
             [petitparser.results :as r]
-            [ssgr.token :as t :refer [*debug-verbose-tokens*]]
+            [ssgr.token :as t :refer [*debug-verbose-tokens* *parser-file*]]
             [edamame.core :as e]
             [hiccup.compiler :as h.c]
             [ssgr.doc :as doc]
             [ssgr.eval :refer [eval-form]]))
 
 (def ^:dynamic *debug-verbose-emphasis* false)
+(def ^:dynamic *verbose-eval* false)
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Line parsers
@@ -149,6 +150,12 @@
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Clojure parser
 
+(defn find-line-col [string ^long position]
+  (let [lines (str/split-lines (subs string 0 position))
+        line-number (count lines)
+        column-number (inc (count (peek lines)))]
+    [line-number column-number]))
+
 (defn find-line-idx ^long [string ^long line-number]
   (loop [[line & rest] (str/split string #"\n" line-number)
          line-idx 0
@@ -185,7 +192,14 @@
           (advance-stream-to-match! stream reader src)
           (t/with-token (doc/clojure form result)
             (t/stream->token stream begin-pos nil)))
-        (catch Exception _
+        (catch Exception ex
+          (when *verbose-eval*
+            (let [[line-number column-number]
+                  (find-line-col (in/source stream)
+                                 begin-pos)]
+              (println "ERROR evaluating clojure code at"
+                       *parser-file* (str "(Ln " line-number ", Col " column-number "):")
+                       (ex-message ex))))
           (in/reset-position! stream begin-pos))))))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -857,12 +871,13 @@
   ([src] (parse src {}))
   ([src options]
    (binding [*debug-verbose-emphasis* (:debug options)
-             *debug-verbose-tokens* (:debug options)]
+             *debug-verbose-tokens* (:debug options)
+             *verbose-eval* (:verbose options)]
      (let [stream (in/make-stream src)
            blocks (parse-blocks! stream)]
        (t/with-token (apply doc/document blocks)
          (t/make-token src 0 (count src) nil))))))
 
 (defn parse-file [file options]
-  (vary-meta (parse (slurp file) options)
-             assoc :file (str file)))
+  (binding [*parser-file* (str file)]
+    (parse (slurp file) options)))

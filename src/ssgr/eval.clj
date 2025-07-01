@@ -17,7 +17,8 @@
             (try
               (callback *element* result)
               (catch Throwable ex
-                (println "ERROR applying render callbacks" ex)
+                (println "ERROR applying render callbacks:"
+                         (ex-message ex))
                 result)))
           *render*
           @callbacks))
