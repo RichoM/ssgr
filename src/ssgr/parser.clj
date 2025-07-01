@@ -3,7 +3,7 @@
             [petitparser.input-stream :as in]
             [petitparser.core :as pp]
             [petitparser.results :as r]
-            [ssgr.token :as t]
+            [ssgr.token :as t :refer [*debug-verbose-tokens*]]
             [edamame.core :as e]
             [hiccup.compiler :as h.c]
             [ssgr.doc :as doc]
@@ -857,7 +857,7 @@
   ([src] (parse src {}))
   ([src options]
    (binding [*debug-verbose-emphasis* (:debug options)
-             t/*debug-verbose-tokens* (:debug options)]
+             *debug-verbose-tokens* (:debug options)]
      (let [stream (in/make-stream src)
            blocks (parse-blocks! stream)]
        (t/with-token (apply doc/document blocks)
