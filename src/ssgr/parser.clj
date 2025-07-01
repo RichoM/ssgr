@@ -864,4 +864,5 @@
          (t/make-token src 0 (count src) nil))))))
 
 (defn parse-file [file options]
-  (parse (slurp file) options))
+  (vary-meta (parse (slurp file) options)
+             assoc :file (str file)))
