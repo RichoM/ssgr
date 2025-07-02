@@ -35,6 +35,30 @@
                     (f (t/parsed-value token))
                     token))))
 
+(def bullet-list-marker 
+  (pp/transform (pp/or \- \+ \*)
+                (fn [char]
+                  {:type ::bullet-list-marker
+                   :char char})))
+
+(def ordered-list-marker
+  (pp/transform (pp/seq (pp/flatten (pp/times pp/digit 1 9))
+                        (pp/or \. \)))
+                (fn [[digits separator]]
+                  {:type ::ordered-list-marker
+                   :digits digits
+                   :separator separator})))
+
+(def list-item
+  (transform-with-token
+   (pp/seq (pp/max space 3)
+           (pp/or bullet-list-marker
+                  ordered-list-marker)
+           (pp/times space 1 4))
+   (fn [[_ list-marker spaces]]
+     {:type ::list-item
+      :marker list-marker})))
+
 (def thematic-break
   (transform-with-token
    (pp/seq (pp/max space 3)
@@ -131,7 +155,8 @@
 
 (defn next-line! [stream]
   ; We try each line parser in order until we find one that matches
-  (let [parsers [thematic-break atx-heading
+  (let [parsers [list-item
+                 thematic-break atx-heading
                  setext-heading-underline
                  indented-code-block code-fence
                  blank paragraph]]
@@ -847,9 +872,31 @@
       (t/stream->token stream begin-pos
                        [opening lines closing]))))
 
+(declare parse-block!)
+
+(defn parse-line-item! [stream]
+  (let [begin-pos (in/position stream)
+        {:keys [list-marker]} (next-line! stream)
+        block (parse-block! stream)
+        blocks [block]]
+    (t/with-token (apply doc/list-item blocks)
+      (t/stream->token stream begin-pos [list-marker block]))))
+
+
+(comment
+  (def stream (in/make-stream "1. Richo capo"))
+
+  (parse-line-item! stream)
+  (peek-line stream)
+  (next-line! stream)
+  (in/next! stream)
+  
+  )
+
 (defn parse-block! [stream]
   (let [{:keys [type]} (peek-line stream)]
     (case type
+      ::list-item (parse-line-item! stream)
       ::paragraph (parse-paragraph! stream)
       ::thematic-break (parse-thematic-break! stream)
       ::atx-heading (parse-atx-heading! stream)

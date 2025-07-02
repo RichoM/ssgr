@@ -102,6 +102,10 @@
   {:type ::strong-emphasis
    :text (compact-text-elements text)})
 
+(defn list-item [& blocks]
+  {:type ::list-item
+   :blocks (vec blocks)})
+
 (defn document [& blocks]
   {:type ::document
    :blocks (vec blocks)})
