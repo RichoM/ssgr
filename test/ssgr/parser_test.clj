@@ -640,6 +640,14 @@
            (d/list-item (d/paragraph (d/text "Richo")))
            (d/list-item (d/paragraph (d/text "Diego"))))))))
 
+(deftest two-lists
+  (is (= (p/parse "+ Richo\n* Diego")
+         (d/document
+          (d/bullet-list
+           (d/list-item (d/paragraph (d/text "Richo"))))
+          (d/bullet-list
+           (d/list-item (d/paragraph (d/text "Diego"))))))))
+
 (comment 
   
   (tap> *1)

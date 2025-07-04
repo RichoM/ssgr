@@ -867,12 +867,14 @@
 (defn parse-list-item! [stream first-item space-parser]
   (let [begin-pos (in/position stream)
         next-line (next-line! stream)]
-    (when (and (= ::list-item (:type next-line))
-               (compatible-list-markers? (:marker next-line) 
-                                         (:marker first-item)))
+    (if (and (= ::list-item (:type next-line))
+             (compatible-list-markers? (:marker next-line)
+                                       (:marker first-item)))
       (let [blocks (parse-list-item-blocks! stream space-parser)]
         (t/with-token (apply doc/list-item blocks)
-          (t/stream->token stream begin-pos nil))))))
+          (t/stream->token stream begin-pos nil)))
+      (do (in/reset-position! stream begin-pos)
+          nil))))
 
 (defn parse-list! [stream {:keys [marker spaces] :as first-item}]
   (let [begin-pos (in/position stream)
