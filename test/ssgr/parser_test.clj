@@ -607,6 +607,39 @@
                        (d/text "baz")))))
       "Example 376"))
 
+(deftest ordered-lists
+  (is (= (p/parse "1. Richo")
+         (d/document
+          (d/ordered-list
+           1
+           (d/list-item (d/paragraph (d/text "Richo")))))))
+  (is (= (p/parse "10. Richo")
+         (d/document
+          (d/ordered-list
+           10
+           (d/list-item (d/paragraph (d/text "Richo")))))))
+  (is (= (p/parse "1) Richo\n2) Diego")
+         (d/document
+          (d/ordered-list
+           1
+           (d/list-item (d/paragraph (d/text "Richo")))
+           (d/list-item (d/paragraph (d/text "Diego"))))))))
+
+(deftest bullet-lists
+  (is (= (p/parse "* Richo")
+         (d/document
+          (d/bullet-list
+           (d/list-item (d/paragraph (d/text "Richo")))))))
+  (is (= (p/parse "+ Richo")
+         (d/document
+          (d/bullet-list
+           (d/list-item (d/paragraph (d/text "Richo")))))))
+  (is (= (p/parse "- Richo\n- Diego")
+         (d/document
+          (d/bullet-list
+           (d/list-item (d/paragraph (d/text "Richo")))
+           (d/list-item (d/paragraph (d/text "Diego"))))))))
+
 (comment 
   
   (tap> *1)

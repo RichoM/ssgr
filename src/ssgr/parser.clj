@@ -39,15 +39,16 @@
   (pp/transform (pp/or \- \+ \*)
                 (fn [char]
                   {:type ::bullet-list-marker
+                   :digits "" ; NOTE(Richo): Same interface as ordered-list-markers
                    :char char})))
 
 (def ordered-list-marker
   (pp/transform (pp/seq (pp/flatten (pp/times pp/digit 1 9))
                         (pp/or \. \)))
-                (fn [[digits separator]]
+                (fn [[digits delimiter]]
                   {:type ::ordered-list-marker
                    :digits digits
-                   :separator separator})))
+                   :char delimiter})))
 
 (def list-item
   (transform-with-token
@@ -57,6 +58,7 @@
            (pp/times space 1 4))
    (fn [[_ list-marker spaces]]
      {:type ::list-item
+      :spaces (count spaces)
       :marker list-marker})))
 
 (def thematic-break
@@ -639,32 +641,6 @@
                   (count inlines)
                   inlines)))))))
 
-(comment
-  (parse "_foo_bar_baz_" {:debug true})
-  (tap> *e)
-
-  (tap> *1)
-
-  (parse "_*__foo*__")
-  (parse "texto **énfasis*\ntexto *énfasis**")
-  (def inlines (-> (parse "texto **énfasis***") :blocks first :elements))
-  (process-emphasis inlines)
-  (def current-pos 0)
-  (next-emphasis-group inlines 9 6)
-  (subvec inlines 0)
-
-  (def stream (in/make-stream "*foo*"))
-
-
-  (apply conj [1 2 3]
-         [4 5 6])
-
-  (parse "*foo*
-          bar")
-
-  (tap> *1)
-  (tap> *e))
-
 (defn- look-for-link-or-image! [stream inlines close-delimiter]
   (let [begin-pos (in/position stream)
         idx (find-last-index inlines (comp #{"[" "!["} :text))]
@@ -874,19 +850,48 @@
 
 (declare parse-block!)
 
-(defn parse-line-item! [stream]
-  (let [begin-pos (in/position stream)
-        {:keys [list-marker]} (next-line! stream)
-        block (parse-block! stream)
-        blocks [block]]
-    (t/with-token (apply doc/list-item blocks)
-      (t/stream->token stream begin-pos [list-marker block]))))
+(defn compatible-list-markers? [m1 m2]
+  (and (= (:type m1) (:type m2))
+       (= (:char m1) (:char m2))))
 
+
+(defn parse-list-item-blocks! [stream space-parser]
+  (let [first-block (parse-block! stream)
+        next-blocks (loop [blocks (transient [])]
+                      (if (and (r/success? (pp/parse-on space-parser stream))
+                               (not (in/end? stream)))
+                        (recur (conj! blocks (parse-block! stream)))
+                        (persistent! blocks)))]
+    (cons first-block next-blocks)))
+
+(defn parse-list-item! [stream first-item space-parser]
+  (let [begin-pos (in/position stream)
+        next-line (next-line! stream)]
+    (when (and (= ::list-item (:type next-line))
+               (compatible-list-markers? (:marker next-line) 
+                                         (:marker first-item)))
+      (let [blocks (parse-list-item-blocks! stream space-parser)]
+        (t/with-token (apply doc/list-item blocks)
+          (t/stream->token stream begin-pos nil))))))
+
+(defn parse-list! [stream {:keys [marker spaces] :as first-item}]
+  (let [begin-pos (in/position stream)
+        space-parser (pp/times space (+ spaces (count (:digits marker)) 1))
+        items (loop [items (transient [])]
+                (if-let [item (parse-list-item! stream first-item space-parser)]
+                  (recur (conj! items item))
+                  (persistent! items)))
+        list-fn (case (:type marker)
+                  ::ordered-list-marker (partial doc/ordered-list 
+                                                 (parse-long (:digits marker)))
+                  ::bullet-list-marker doc/bullet-list)]
+    (t/with-token (apply list-fn items)
+      (t/stream->token stream begin-pos nil))))
 
 (comment
-  (def stream (in/make-stream "1. Richo capo"))
+  (def stream (in/make-stream "1. Richo"))
 
-  (parse-line-item! stream)
+  (parse-block! stream)
   (peek-line stream)
   (next-line! stream)
   (in/next! stream)
@@ -894,9 +899,9 @@
   )
 
 (defn parse-block! [stream]
-  (let [{:keys [type]} (peek-line stream)]
+  (let [{:keys [type] :as line} (peek-line stream)]
     (case type
-      ::list-item (parse-line-item! stream)
+      ::list-item (parse-list! stream line)
       ::paragraph (parse-paragraph! stream)
       ::thematic-break (parse-thematic-break! stream)
       ::atx-heading (parse-atx-heading! stream)

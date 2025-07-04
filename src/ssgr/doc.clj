@@ -106,6 +106,16 @@
   {:type ::list-item
    :blocks (vec blocks)})
 
+(defn ordered-list [start & items]
+  {:type ::ordered-list
+   :start start
+   :items (vec items)})
+
+(defn bullet-list [start & items]
+  {:type ::bullet-list
+   :start start
+   :items (vec items)})
+
 (defn document [& blocks]
   {:type ::document
    :blocks (vec blocks)})
