@@ -65,6 +65,24 @@
     (when (seq rendered-elements)
       (apply conj [:strong] rendered-elements))))
 
+(defmethod render* ::doc/list-item [{:keys [blocks]}]
+  (let [rendered-blocks (keep render blocks)]
+    (when (seq rendered-blocks)
+      (apply conj [:li] rendered-blocks))))
+
+(defmethod render* ::doc/ordered-list [{:keys [start items]}]
+  (let [rendered-items (keep render items)
+        rendered-list (if (not= 1 start)
+                        [:ol {:start start}]
+                        [:ol])]
+    (when (seq rendered-items)
+      (apply conj rendered-list rendered-items))))
+
+(defmethod render* ::doc/bullet-list [{:keys [items]}]
+  (let [rendered-items (keep render items)]
+    (when (seq rendered-items)
+      (apply conj [:ul] rendered-items))))
+
 (defmethod render* ::doc/document [{:keys [blocks]}] 
   (let [rendered-blocks (keep render blocks)]
     (when (seq rendered-blocks)
