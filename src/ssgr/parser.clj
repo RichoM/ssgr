@@ -854,33 +854,39 @@
   (and (= (:type m1) (:type m2))
        (= (:char m1) (:char m2))))
 
-
-(defn parse-list-item-blocks! [stream space-parser]
-  (let [first-block (parse-block! stream)
+(defn parse-list-item-blocks! [stream ctx]
+  (let [space-parser (-> ctx :line-prefix)
+        first-block (parse-block! stream ctx)
         next-blocks (loop [blocks (transient [])]
                       (if (and (r/success? (pp/parse-on space-parser stream))
                                (not (in/end? stream)))
-                        (recur (conj! blocks (parse-block! stream)))
+                        (recur (conj! blocks (parse-block! stream ctx)))
                         (persistent! blocks)))]
     (cons first-block next-blocks)))
 
-(defn parse-list-item! [stream first-item space-parser]
+(defn parse-list-item! [stream first-item ctx]
   (let [begin-pos (in/position stream)
         next-line (next-line! stream)]
     (if (and (= ::list-item (:type next-line))
              (compatible-list-markers? (:marker next-line)
                                        (:marker first-item)))
-      (let [blocks (parse-list-item-blocks! stream space-parser)]
+      (let [blocks (parse-list-item-blocks! stream ctx)]
         (t/with-token (apply doc/list-item blocks)
           (t/stream->token stream begin-pos nil)))
       (do (in/reset-position! stream begin-pos)
           nil))))
 
-(defn parse-list! [stream {:keys [marker ^long spaces] :as first-item}]
+(defn parse-list! 
+  [stream {:keys [marker ^long spaces] :as first-item} ctx]
   (let [begin-pos (in/position stream)
-        space-parser (pp/times space (+ spaces (count (:digits marker)) 1))
+        new-ctx (update ctx :line-prefix
+                        (fn [parser]
+                          (let [space-parser (pp/times space (+ spaces (count (:digits marker)) 1))]
+                            (if parser
+                              (pp/seq parser space-parser)
+                              space-parser))))
         items (loop [items (transient [])]
-                (if-let [item (parse-list-item! stream first-item space-parser)]
+                (if-let [item (parse-list-item! stream first-item new-ctx)]
                   (recur (conj! items item))
                   (persistent! items)))
         list-fn (case (:type marker)
@@ -890,20 +896,10 @@
     (t/with-token (apply list-fn items)
       (t/stream->token stream begin-pos nil))))
 
-(comment
-  (def stream (in/make-stream "1. Richo"))
-
-  (parse-block! stream)
-  (peek-line stream)
-  (next-line! stream)
-  (in/next! stream)
-  
-  )
-
-(defn parse-block! [stream]
+(defn parse-block! [stream ctx]
   (let [{:keys [type] :as line} (peek-line stream)]
     (case type
-      ::list-item (parse-list! stream line)
+      ::list-item (parse-list! stream line ctx)
       ::paragraph (parse-paragraph! stream)
       ::thematic-break (parse-thematic-break! stream)
       ::atx-heading (parse-atx-heading! stream)
@@ -913,22 +909,26 @@
       ::blank (parse-blank-lines! stream)
       (throw (ex-info (str "Parse error! Type not found: " type) {})))))
 
-(defn parse-blocks! [stream]
+(defn parse-blocks! [stream ctx]
   (loop [blocks (transient [])]
     (if-not (in/end? stream)
-      (if-let [next-block (parse-block! stream)]
+      (if-let [next-block (parse-block! stream ctx)]
         (recur (conj! blocks next-block))
         (recur blocks))
       (persistent! blocks))))
 
+(defn make-context []
+  {:line-prefix nil})
+
 (defn parse
   ([src] (parse src {}))
-  ([src options]
+  ([src options] (parse src options (make-context)))
+  ([src options ctx]
    (binding [*debug-verbose-emphasis* (:debug options)
              *debug-verbose-tokens* (:debug options)
              *verbose-eval* (:verbose options)]
      (let [stream (in/make-stream src)
-           blocks (parse-blocks! stream)]
+           blocks (parse-blocks! stream ctx)]
        (t/with-token (apply doc/document blocks)
          (t/make-token src 0 (count src) nil))))))
 

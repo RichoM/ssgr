@@ -648,7 +648,29 @@
           (d/bullet-list
            (d/list-item (d/paragraph (d/text "Diego"))))))))
 
+(deftest list-with-sublists
+  (is (= (p/parse "1. item one\n2. item two\n   - sublist\n   - sublist")
+         (d/document
+          (d/ordered-list
+           1
+           (d/list-item (d/paragraph (d/text "item one")))
+           (d/list-item (d/paragraph (d/text "item two"))
+                        (d/bullet-list
+                         (d/list-item (d/paragraph (d/text "sublist")))
+                         (d/list-item (d/paragraph (d/text "sublist"))))))))))
+
+
 (comment 
+
+(def src "2. item two
+          
+   - sublist
+          
+   - sublist")
+(def src "- a
+- b")
+  
+  (p/parse src)
   
   (tap> *1)
 
