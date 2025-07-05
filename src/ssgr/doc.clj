@@ -111,9 +111,8 @@
    :start start
    :items (vec items)})
 
-(defn bullet-list [start & items]
+(defn bullet-list [& items]
   {:type ::bullet-list
-   :start start
    :items (vec items)})
 
 (defn document [& blocks]
