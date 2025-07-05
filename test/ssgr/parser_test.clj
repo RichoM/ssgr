@@ -659,14 +659,32 @@
                          (d/list-item (d/paragraph (d/text "sublist")))
                          (d/list-item (d/paragraph (d/text "sublist"))))))))))
 
+(deftest deeply-nested-list
+  (is (= (p/parse "1. item one\n2. item two\n   - sublist\n     que continúa en la siguiente línea.\n\n     Y que además tiene otro párrafo.\n   - sublist")
+         (d/document
+          (d/ordered-list
+           1
+           (d/list-item (d/paragraph (d/text "item one")))
+           (d/list-item 
+            (d/paragraph (d/text "item two"))
+            (d/bullet-list
+             (d/list-item (d/paragraph (d/text "sublist")
+                                       (d/soft-break)
+                                       (d/text "que continúa en la siguiente línea."))
+                          (d/paragraph (d/text "Y que además tiene otro párrafo.")))
+             (d/list-item (d/paragraph (d/text "sublist"))))))))))
+
 
 (comment 
 
-(def src "2. item two
-          
+(def src "1. item one
+2. item two
    - sublist
-          
-   - sublist")
+     que continúa en la siguiente línea.
+
+     Y que además tiene otro párrafo.
+   - sublist
+")
 (def src "- a
 - b")
   
