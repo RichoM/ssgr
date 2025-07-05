@@ -876,7 +876,7 @@
       (do (in/reset-position! stream begin-pos)
           nil))))
 
-(defn parse-list! [stream {:keys [marker spaces] :as first-item}]
+(defn parse-list! [stream {:keys [marker ^long spaces] :as first-item}]
   (let [begin-pos (in/position stream)
         space-parser (pp/times space (+ spaces (count (:digits marker)) 1))
         items (loop [items (transient [])]
