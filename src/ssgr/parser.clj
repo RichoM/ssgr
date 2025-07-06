@@ -861,8 +861,11 @@
                       (if (and (r/success? (pp/parse-on space-parser stream))
                                (not (in/end? stream)))
                         (recur (conj! blocks (parse-block! stream ctx)))
-                        (persistent! blocks)))]
-    (cons first-block next-blocks)))
+                        (let [{:keys [type]} (peek-line stream)]
+                          (if (= type ::blank)
+                            (recur (conj! blocks (parse-block! stream ctx)))
+                            (persistent! blocks)))))]
+    (cons first-block (remove nil? next-blocks))))
 
 (defn parse-list-item! [stream first-item ctx]
   (let [begin-pos (in/position stream)

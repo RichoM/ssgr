@@ -665,7 +665,22 @@
           (d/ordered-list
            1
            (d/list-item (d/paragraph (d/text "item one")))
-           (d/list-item 
+           (d/list-item
+            (d/paragraph (d/text "item two"))
+            (d/bullet-list
+             (d/list-item (d/paragraph (d/text "sublist")
+                                       (d/soft-break)
+                                       (d/text "que continúa en la siguiente línea."))
+                          (d/paragraph (d/text "Y que además tiene otro párrafo.")))
+             (d/list-item (d/paragraph (d/text "sublist")))))))))
+  ; NOTE(Richo): This text should parse the same as before, the only difference is that the blank
+  ; line between paragraphs also contains the exact number of spaces to be part of the list item
+  (is (= (p/parse "1. item one\n2. item two\n   - sublist\n     que continúa en la siguiente línea.\n     \n     Y que además tiene otro párrafo.\n   - sublist")
+         (d/document
+          (d/ordered-list
+           1
+           (d/list-item (d/paragraph (d/text "item one")))
+           (d/list-item
             (d/paragraph (d/text "item two"))
             (d/bullet-list
              (d/list-item (d/paragraph (d/text "sublist")
