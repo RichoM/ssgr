@@ -155,7 +155,11 @@
 (defn paragraph? [line]
   (pp/matches? paragraph line))
 
-(defn next-line! [stream]
+(defn next-line! [stream ctx]
+  ; If we have a line-prefix parser, we use it to consume the stream, the result
+  ; doesn't matter, we just discard it (I don't know if this is correct, though)
+  (when-let [line-prefix (-> ctx :line-prefix)]
+    (pp/parse-on line-prefix stream))
   ; We try each line parser in order until we find one that matches
   (let [parsers [list-item
                  thematic-break atx-heading
@@ -168,9 +172,9 @@
           (when rest (recur rest))
           (r/actual-result result))))))
 
-(defn peek-line [stream]
+(defn peek-line [stream ctx]
   (let [begin-pos (in/position stream)
-        result (next-line! stream)]
+        result (next-line! stream ctx)]
     (in/reset-position! stream begin-pos)
     result))
 
@@ -287,7 +291,7 @@
           (do (in/reset-position! stream begin-pos)
               nil))))))
 
-(defn parse-code-span! [stream]
+(defn parse-code-span! [stream ctx]
   (when (= \` (in/peek stream))
     (let [begin-pos (in/position stream)
           opening (consume-chars! stream \`)
@@ -307,14 +311,14 @@
                 ; a paragraph or an indented-code-block.
                 \newline (do (in/next! stream) ; Discard newline
                              (when (contains? #{::paragraph ::indented-code-block}
-                                              (:type (peek-line stream)))
+                                              (:type (peek-line stream ctx)))
                                ; Discard leading spaces
                                (consume-chars! stream \space \tab)
                                (recur (conj! content \space))))
                 \return (do (in/next! stream) ; Discard newline
                             (consume-1-char! stream \newline) ; Discard newline (if any)
                             (when (contains? #{::paragraph ::indented-code-block}
-                                             (:type (peek-line stream)))
+                                             (:type (peek-line stream ctx)))
                               ; Discard leading spaces
                               (consume-chars! stream \space \tab)
                               (recur (conj! content \space))))
@@ -677,7 +681,7 @@
       (conj inlines (delimiter->text close-delimiter)))))
 
 
-(defn parse-inlines! [stream]
+(defn parse-inlines! [stream ctx]
   (loop [inlines []
          inline-text nil]
     (cond
@@ -706,12 +710,12 @@
                                                            (doc/soft-break))
                                              token))))]
                   (if (contains? #{::paragraph ::indented-code-block} ; TODO(Richo): Check if this works for all inlines
-                                 (:type (peek-line stream)))
+                                 (:type (peek-line stream ctx)))
                     (do (consume-chars! stream \space \tab)
                         (recur inlines nil))
                     (process-emphasis inlines)))
                 (if-let [special-inline (or (parse-clojure! stream)
-                                            (parse-code-span! stream))]
+                                            (parse-code-span! stream ctx))]
                   (recur (-> inlines
                              (condj (close-text inline-text))
                              (condj special-inline))
@@ -733,7 +737,7 @@
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Block parsers
 
-(defn parse-paragraph! [stream]
+(defn parse-paragraph! [stream ctx]
   (let [begin-pos (in/position stream)
         make-token (fn [lines] (t/stream->token stream begin-pos lines))
         make-paragraph (fn [lines]
@@ -746,10 +750,10 @@
                                                  (apply concat)))
                          (make-token lines)))]
     (loop [lines (transient [])]
-      (let [{:keys [type] :as next-line} (peek-line stream)]
+      (let [{:keys [type] :as next-line} (peek-line stream ctx)]
         (case type
           ::paragraph
-          (let [inlines (parse-inlines! stream)]
+          (let [inlines (parse-inlines! stream ctx)]
             (if (seq inlines)
               (recur (conj! lines inlines))
               (make-paragraph (persistent! lines))))
@@ -757,7 +761,7 @@
           ; If we find setext-heading-underline, we convert the whole 
           ; paragraph to a heading
           ::setext-heading-underline
-          (let [{:keys [chars]} (next-line! stream)]
+          (let [{:keys [chars]} (next-line! stream ctx)]
             (make-heading (if (= \- (first chars)) 2 1)
                           (persistent! lines)))
 
@@ -765,14 +769,14 @@
           ; which case the setext-heading takes precedence
           ::thematic-break
           (if (= \- (first (:chars next-line)))
-            (do (next-line! stream) ; discard next line
+            (do (next-line! stream ctx) ; discard next line
                 (make-heading 2 (persistent! lines)))
             (make-paragraph (persistent! lines)))
 
           ; Indented code blocks can't interrupt a paragraph, so if
           ; we found one we just treat it as a valid line
           ::indented-code-block
-          (let [inlines (parse-inlines! stream)]
+          (let [inlines (parse-inlines! stream ctx)]
             (if (seq inlines)
               (recur (conj! lines inlines))
               (make-paragraph (persistent! lines))))
@@ -781,63 +785,63 @@
           (make-paragraph (persistent! lines)))))))
 
 
-(defn parse-thematic-break! [stream]
+(defn parse-thematic-break! [stream ctx]
   (let [begin-pos (in/position stream)
-        line (next-line! stream)]
+        line (next-line! stream ctx)]
     (t/with-token (doc/thematic-break)
       (t/stream->token stream begin-pos line))))
 
-(defn parse-atx-heading! [stream]
+(defn parse-atx-heading! [stream ctx]
   (let [begin-pos (in/position stream)
-        {:keys [level content-start] :as line} (next-line! stream)]
+        {:keys [level content-start] :as line} (next-line! stream ctx)]
     ; We reset the stream to the beginning of the content (skipping all the #)
     (in/reset-position! stream content-start)
     ; Skip any spaces or tabs before parsing the inline content
     (consume-chars! stream \space \tab)
-    (let [inlines (parse-inlines! stream)]
+    (let [inlines (parse-inlines! stream ctx)]
       (t/with-token (apply doc/heading level inlines)
         (t/stream->token stream begin-pos line)))))
 
-(defn parse-blank-lines! [stream]
+(defn parse-blank-lines! [stream ctx]
   (loop []
-    (when (= ::blank (:type (peek-line stream)))
-      (next-line! stream)
+    (when (= ::blank (:type (peek-line stream ctx)))
+      (next-line! stream ctx)
       (recur))))
 
-(defn parse-indented-code-block! [stream]
+(defn parse-indented-code-block! [stream ctx]
   ; NOTE(Richo): We take the actual lines from the tokens because
   ; the code blocks should preserve whatever the user typed. 
   ; However, since we're parsing an indented block code, we need 
   ; to remove the first 4 indentation spaces.
   (let [begin-pos (in/position stream)
         lines (loop [lines (transient [])]
-                (let [{:keys [type]} (peek-line stream)]
+                (let [{:keys [type]} (peek-line stream ctx)]
                   (if (= ::indented-code-block type)
-                    (recur (conj! lines (next-line! stream)))
+                    (recur (conj! lines (next-line! stream ctx)))
                     (persistent! lines))))
         line-contents (map #(-> % meta :token t/input-value (subs 4))
                            lines)]
     (t/with-token (doc/code-block "" (str/join line-contents))
       (t/stream->token stream begin-pos lines))))
 
-(defn parse-fenced-code-block! [stream]
+(defn parse-fenced-code-block! [stream ctx]
   (let [begin-pos (in/position stream)
-        opening (next-line! stream)
+        opening (next-line! stream ctx)
         lines (loop [lines (transient [])]
-                (if-let [{:keys [type] :as next} (peek-line stream)]
+                (if-let [{:keys [type] :as next} (peek-line stream ctx)]
                   (if-not (and (= ::code-fence type)
                                (str/blank? (:info-string next))
                                (= (-> opening :chars first)
                                   (-> next :chars first))
                                (<= (-> opening :chars count)
                                    (-> next :chars count)))
-                    (recur (conj! lines (next-line! stream)))
+                    (recur (conj! lines (next-line! stream ctx)))
                     (persistent! lines))
                   (persistent! lines)))
 
         ; We may or may not have a closing fence
-        closing (when (= ::code-fence (:type (peek-line stream)))
-                  (next-line! stream))
+        closing (when (= ::code-fence (:type (peek-line stream ctx)))
+                  (next-line! stream ctx))
 
         ; NOTE(Richo): We take the actual lines from the tokens because
         ; the code blocks should preserve whatever the user typed
@@ -861,7 +865,7 @@
                       (if (and (r/success? (pp/parse-on space-parser stream))
                                (not (in/end? stream)))
                         (recur (conj! blocks (parse-block! stream ctx)))
-                        (let [{:keys [type]} (peek-line stream)]
+                        (let [{:keys [type]} (peek-line stream ctx)]
                           (if (= type ::blank)
                             (recur (conj! blocks (parse-block! stream ctx)))
                             (persistent! blocks)))))]
@@ -869,7 +873,7 @@
 
 (defn parse-list-item! [stream first-item ctx]
   (let [begin-pos (in/position stream)
-        next-line (next-line! stream)]
+        next-line (next-line! stream ctx)]
     (if (and (= ::list-item (:type next-line))
              (compatible-list-markers? (:marker next-line)
                                        (:marker first-item)))
@@ -900,16 +904,16 @@
       (t/stream->token stream begin-pos nil))))
 
 (defn parse-block! [stream ctx]
-  (let [{:keys [type] :as line} (peek-line stream)]
+  (let [{:keys [type] :as line} (peek-line stream ctx)]
     (case type
       ::list-item (parse-list! stream line ctx)
-      ::paragraph (parse-paragraph! stream)
-      ::thematic-break (parse-thematic-break! stream)
-      ::atx-heading (parse-atx-heading! stream)
-      ::setext-heading-underline (parse-paragraph! stream)
-      ::indented-code-block (parse-indented-code-block! stream)
-      ::code-fence (parse-fenced-code-block! stream)
-      ::blank (parse-blank-lines! stream)
+      ::paragraph (parse-paragraph! stream ctx)
+      ::thematic-break (parse-thematic-break! stream ctx)
+      ::atx-heading (parse-atx-heading! stream ctx)
+      ::setext-heading-underline (parse-paragraph! stream ctx)
+      ::indented-code-block (parse-indented-code-block! stream ctx)
+      ::code-fence (parse-fenced-code-block! stream ctx)
+      ::blank (parse-blank-lines! stream ctx)
       (throw (ex-info (str "Parse error! Type not found: " type) {})))))
 
 (defn parse-blocks! [stream ctx]
