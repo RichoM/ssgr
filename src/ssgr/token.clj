@@ -7,6 +7,7 @@
 (def source t/source)
 (def start t/start)
 (def stop t/stop)
+(def count t/count)
 (def parsed-value t/parsed-value)
 
 (def ^:dynamic *debug-verbose-tokens* false)
@@ -38,7 +39,7 @@
     (when (seq tokens)
       (let [first-token (first tokens)
             last-token (peek tokens)]
-        (if (= 1 (count tokens))
+        (if (= 1 (clojure.core/count tokens))
           first-token
           (make-token (source first-token)
                       (start first-token)
