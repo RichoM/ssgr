@@ -48,10 +48,10 @@
 
 (defn list-files [src]
   (when-let [entries (sort (.listFiles (fs/file src)))]
-    (lazy-seq (concat (filter fs/regular-file? entries)
-                      (->> entries
-                           (filter fs/directory?)
-                           (mapcat list-files))))))
+    (concat (filter fs/regular-file? entries)
+            (->> entries
+                 (filter fs/directory?)
+                 (mapcat list-files)))))
 
 (defn process! [src out options]
   (println "Looking for files on" (str src))
@@ -128,7 +128,7 @@
 (comment
   (use 'criterium.core)
 
-  (-main "-v" "test-files" "out")
+  (-main #_"-v" "test-files" "out")
 
   (require '[taoensso.tufte :as tufte])
   (tufte/add-basic-println-handler! {})
