@@ -1,5 +1,6 @@
 (ns ssgr.eval
-  (:require [sci.core :as sci]))
+  (:require [sci.core :as sci]
+            [ssgr.token :as t]))
 
 (def callbacks (atom []))
 
@@ -23,13 +24,21 @@
           *render*
           @callbacks))
 
-(def fns (sci/create-ns 'ssgr-ns nil))
+(def ssgr-fns (sci/create-ns 'ssgr-ns nil))
+(def ssgr-ns {'callbacks (sci/copy-var callbacks ssgr-fns)
+              'register-callback! (sci/copy-var register-callback! ssgr-fns)
+              'render (sci/copy-var render ssgr-fns)})
 
-(def ssgr-ns {'callbacks (sci/copy-var callbacks fns)
-              'register-callback! (sci/copy-var register-callback! fns)
-              'render (sci/copy-var render fns)})
+(def token-fns (sci/create-ns 'token-ns nil))
+(def token-ns {'input-value (sci/copy-var t/input-value token-fns)
+               'source (sci/copy-var t/source token-fns)
+               'start (sci/copy-var t/start token-fns)
+               'stop (sci/copy-var t/stop token-fns)
+               'count (sci/copy-var t/count token-fns)
+               'parsed-value (sci/copy-var t/parsed-value token-fns)})
 
-(def opts {:namespaces {'ssgr ssgr-ns}})
+(def opts {:namespaces {'ssgr ssgr-ns
+                        'ssgr.token token-ns}})
 
 (def ctx (sci/init opts))
 
