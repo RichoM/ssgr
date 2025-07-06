@@ -665,7 +665,7 @@
           (d/ordered-list
            1
            (d/list-item (d/paragraph (d/text "item one")))
-           (d/list-item
+           (d/list-item 
             (d/paragraph (d/text "item two"))
             (d/bullet-list
              (d/list-item (d/paragraph (d/text "sublist")
@@ -687,7 +687,20 @@
                                        (d/soft-break)
                                        (d/text "que continúa en la siguiente línea."))
                           (d/paragraph (d/text "Y que además tiene otro párrafo.")))
-             (d/list-item (d/paragraph (d/text "sublist"))))))))))
+             (d/list-item (d/paragraph (d/text "sublist")))))))))
+  (is (= (p/parse "1. item one\n   - sublist\n     * sub sub list\n   - sublist")
+         (d/document
+          (d/ordered-list
+           1
+           (d/list-item
+            (d/paragraph (d/text "item one"))
+            (d/bullet-list
+             (d/list-item 
+              (d/paragraph (d/text "sublist"))
+              (d/bullet-list 
+               (d/list-item (d/paragraph (d/text "sub sub list")))))
+             (d/list-item
+              (d/paragraph (d/text "sublist"))))))))))
 
 
 (comment 
