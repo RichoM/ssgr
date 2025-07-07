@@ -3,6 +3,7 @@
             [clojure.string :as str]
             [clojure.tools.cli :as cli]
             [ssgr.parser :as p]
+            [ssgr.clojure :as c]
             [ssgr.renderer :as r]
             [ssgr.eval :as e])
   (:gen-class))
@@ -37,7 +38,7 @@
 (defn process-clj-file! [path options]
   (when (:verbose options)
     (println (str path)))
-  (p/parse-file (fs/file path)
+  (c/eval-file! (fs/file path)
                 options e/eval-form))
 
 (defn process-cljmd-file! [path out options]
@@ -142,7 +143,7 @@
 (comment
   (use 'criterium.core)
 
-  (-main "-v" "test-files" "out")
+  (-main #_"-v" "test-files" "out")
 
   (require '[taoensso.tufte :as tufte])
   (tufte/add-basic-println-handler! {})

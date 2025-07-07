@@ -60,3 +60,27 @@
                          *parser-file* (str "(Ln " line-number ", Col " column-number "):")
                          (ex-message ex))))
             (in/reset-position! stream begin-pos)))))))
+
+(defn eval-file! [file options eval-form]
+  (binding [*parser-file* (str file)
+            *verbose-eval* (:verbose options)]
+    (try
+      (doseq [form (e/parse-string-all (slurp file) {:all true})]
+        (try
+          (eval-clojure form eval-form)
+          (catch Exception ex
+            (println "ERROR evaluating clojure code at"
+                     *parser-file* (str "(Ln " (-> form meta :row) 
+                                        ", Col " (-> form meta :col) "):")
+                     (ex-message ex)))))
+      (catch Exception ex
+        (println (str "ERROR parsing clojure file " file ":")
+                 (ex-message ex))))))
+
+(comment
+  (def src (slurp "test-files/_layout.clj"))
+
+  (e/parse-string-all src {:all true})
+  (meta (first *1))
+  
+  )
