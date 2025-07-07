@@ -3,13 +3,13 @@
             [petitparser.input-stream :as in]
             [petitparser.core :as pp]
             [petitparser.results :as r]
+            [ssgr.clojure :as c :refer [*verbose-eval*]]
             [ssgr.token :as t :refer [*debug-verbose-tokens* *parser-file*]]
             [edamame.core :as e]
             [hiccup.compiler :as h.c]
             [ssgr.doc :as doc]))
 
 (def ^:dynamic *debug-verbose-emphasis* false)
-(def ^:dynamic *verbose-eval* false)
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Line parsers
@@ -176,62 +176,6 @@
         result (next-line! stream ctx)]
     (in/reset-position! stream begin-pos)
     result))
-
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-;; Clojure parser
-
-(defn find-line-col [string ^long position]
-  (let [lines (str/split-lines (subs string 0 position))
-        line-number (count lines)
-        column-number (inc (count (peek lines)))]
-    [line-number column-number]))
-
-(defn find-line-idx ^long [string ^long line-number]
-  (loop [[line & rest] (str/split string #"\n" line-number)
-         line-idx 0
-         line-count 1]
-    (if (and line (< line-count line-number))
-      (recur rest
-             (+ line-idx (count line) 1)
-             (inc line-count))
-      line-idx)))
-
-(defn advance-stream-to-match! [stream reader source]
-  (let [^long line-number (e/get-line-number reader)
-        ^long column-number (e/get-column-number reader)
-        line-position (find-line-idx source line-number)
-        position (+ (in/position stream)
-                    line-position
-                    (dec column-number))]
-    (in/reset-position! stream position)))
-
-(defn eval-clojure [form eval-form]
-  (let [result (eval-form form)]
-    (if (vector? form)
-      (h.c/normalize-element result)
-      result)))
-
-(defn parse-clojure! [stream ctx]
-  (when-let [eval-form (-> ctx :eval-form)]
-    (let [begin-pos (in/position stream)]
-      (when (#{\( \[} (in/peek stream))
-        (try
-          (let [src (subs (in/source stream) begin-pos)
-                reader (e/source-reader src)
-                form (e/parse-next reader (e/normalize-opts {:all true}))
-                result (eval-clojure form eval-form)]
-            (advance-stream-to-match! stream reader src)
-            (t/with-token (doc/clojure form result)
-              (t/stream->token stream begin-pos nil)))
-          (catch Exception ex
-            (when *verbose-eval*
-              (let [[line-number column-number]
-                    (find-line-col (in/source stream)
-                                   begin-pos)]
-                (println "ERROR evaluating clojure code at"
-                         *parser-file* (str "(Ln " line-number ", Col " column-number "):")
-                         (ex-message ex))))
-            (in/reset-position! stream begin-pos)))))))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Inline parsers
@@ -714,7 +658,7 @@
                     (do (consume-chars! stream \space \tab)
                         (recur inlines nil))
                     (process-emphasis inlines)))
-                (if-let [special-inline (or (parse-clojure! stream ctx)
+                (if-let [special-inline (or (c/parse-clojure! stream ctx)
                                             (parse-code-span! stream ctx))]
                   (recur (-> inlines
                              (condj (close-text inline-text))
