@@ -1,5 +1,6 @@
 (ns ssgr.eval
   (:require [sci.core :as sci]
+            [ssgr.doc :as doc]
             [ssgr.token :as t]
             [ssgr.parser :as p]
             [ssgr.renderer :as r]))
@@ -15,7 +16,7 @@
 (def ^:dynamic *element* nil)
 (def ^:dynamic *render* nil)
 
-(defn render []
+(defn call-render-callbacks []
   (reduce (fn [result callback]
             (try
               (callback *element* result)
@@ -42,7 +43,7 @@
 (def ssgr-fns (sci/create-ns 'ssgr-ns nil))
 (def ssgr-ns {'callbacks (sci/copy-var callbacks ssgr-fns)
               'register-callback! (sci/copy-var register-callback! ssgr-fns)
-              'render (sci/copy-var render ssgr-fns)
+              'call-render-callbacks (sci/copy-var call-render-callbacks ssgr-fns)
               'markdown (sci/copy-var markdown ssgr-fns)})
 
 (def token-fns (sci/create-ns 'token-ns nil))
@@ -62,27 +63,30 @@
   (= sci.lang.Var
      (type result)))
 
-(defn eval-form [form]
+(defn eval-form 
+  "Called by the parser any time it encounters some text that looks like it could be
+   clojure code. If it evaluates correctly, it returns the result. Otherwise, it should
+   throw an exception and it's the parser's responsibility to handle it appropriately.
+   This is also called from eval-render to invoke the render callbacks for all elements."
+  [form]
   (let [result (sci/binding [sci/out *out*]
                  (sci/eval-form ctx form))]
+    ; NOTE(Richo): We check if the result is a sci.lang.Var to avoid exposing any function
+    ; of variable defined by the user into the document
     (if (sci-var? result)
       nil
       result)))
 
-(defn eval-render [e r]
+(defn eval-render
+  "Called by the renderer after processing each element. Its arguments are the element
+   being processed and the result of rendering that element.
+   This is useful for providing a callback mechanism that allows to intercept the 
+   rendering of any element from user code.
+   I don't know if there is a better way of then calling the render function (in the 
+   context of sci) with this values as parameters, but what I found works is to just
+   bind this values to some global variables and make the render function simply read
+   from those global variables. It kind of sucks, but it works..."
+  [e r]
   (binding [*element* e
             *render* r]
-    (eval-form '(ssgr/render))))
-
-(comment
-  (eval-form '(ssgr/render 1 2))
-
-  (sci/eval-string* ctx "(ssgr/register-callback! (fn [e r] [:div 42]))")
-  (sci/eval-string* ctx "@ssgr/callbacks")
-  (sci/eval-string* ctx "(ssgr/render 1 2)")
-
-  (eval-form '(deref ssgr/callbacks))
-  (eval-form '(swap! ssgr/callbacks conj 2))
-  (eval-form '(ssgr/register-callback! (fn [e r] (println "Test") r)))
-  (eval-form '(ssgr/render 1 2))
-)
+    (eval-form '(ssgr/call-render-callbacks))))
