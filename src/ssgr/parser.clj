@@ -371,10 +371,10 @@
 
 (defn- can-open?
   "A left-flanking delimiter run is a delimiter run that is (1) not followed 
-     by Unicode whitespace, and either (2a) not followed by a Unicode punctuation 
-     character, or (2b) followed by a Unicode punctuation character and preceded 
-     by Unicode whitespace or a Unicode punctuation character. For purposes of this
-     definition, the beginning and the end of the line count as Unicode whitespace."
+   by Unicode whitespace, and either (2a) not followed by a Unicode punctuation 
+   character, or (2b) followed by a Unicode punctuation character and preceded 
+   by Unicode whitespace or a Unicode punctuation character. For purposes of this
+   definition, the beginning and the end of the line count as Unicode whitespace."
   [prev-char next-char]
   (and (not (unicode-whitespace-character? next-char))
        (or (not (unicode-punctuation-character? next-char))
@@ -383,10 +383,10 @@
 
 (defn- can-close?
   "A right-flanking delimiter run is a delimiter run that is (1) not preceded 
-     by Unicode whitespace, and either (2a) not preceded by a Unicode punctuation 
-     character, or (2b) preceded by a Unicode punctuation character and followed 
-     by Unicode whitespace or a Unicode punctuation character. For purposes of this 
-     definition, the beginning and the end of the line count as Unicode whitespace."
+   by Unicode whitespace, and either (2a) not preceded by a Unicode punctuation 
+   character, or (2b) preceded by a Unicode punctuation character and followed 
+   by Unicode whitespace or a Unicode punctuation character. For purposes of this 
+   definition, the beginning and the end of the line count as Unicode whitespace."
   [prev-char next-char]
   (and (not (unicode-whitespace-character? prev-char))
        (or (not (unicode-punctuation-character? prev-char))
