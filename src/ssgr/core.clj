@@ -34,12 +34,6 @@
     (fs/create-dirs parent))
   (fs/copy src dest))
 
-(defn get-out-path [path src out] 
-  (-> path
-      (str/replace-first (str src) (str out))
-      (fs/strip-ext)
-      (str ".html")))
-
 (defn process-clj-file! [path options]
   (when (:verbose options)
     (println (str path)))
