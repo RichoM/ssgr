@@ -29,8 +29,15 @@
 (declare eval-render)
 
 (defn markdown [src]
-  (->> (-> (p/parse src {} nil) :blocks)
-       (map #(r/render % eval-render))))
+  (let [{:keys [blocks]} (p/parse src {} nil)]
+    (if (= 1 (count blocks))
+      (let [{:keys [type] :as block} (first blocks)]
+        (if (= :ssgr.doc/paragraph type)
+          (if (= 1 (count (:elements block)))
+            (r/render (first (:elements block)) eval-render)
+            (map #(r/render % eval-render) (:elements block)))
+          (r/render block eval-render)))
+      (map #(r/render % eval-render) blocks))))
 
 (def ssgr-fns (sci/create-ns 'ssgr-ns nil))
 (def ssgr-ns {'callbacks (sci/copy-var callbacks ssgr-fns)
