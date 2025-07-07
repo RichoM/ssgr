@@ -34,18 +34,37 @@
     (fs/create-dirs parent))
   (fs/copy src dest))
 
-(defn process-file! [path out options]
-  (try
-    (when (:verbose options)
-      (println (str path)))
-    (let [doc (p/parse-file (fs/file path) 
-                            options e/eval-form)
-          hiccup (r/render doc e/eval-render)
-          html (r/html hiccup)]
-      (when out 
-        (write-file! out html)))
-    (catch Exception ex
-      (println (str "ERROR processing " path) ex))))
+(defn get-out-path [path src out] 
+  (-> path
+      (str/replace-first (str src) (str out))
+      (fs/strip-ext)
+      (str ".html")))
+
+(defn process-clj-file! [path options]
+  (when (:verbose options)
+    (println (str path)))
+  (p/parse-file (fs/file path)
+                options e/eval-form))
+
+(defn process-cljmd-file! [path out options]
+  (when (:verbose options)
+    (println (str path)))
+  (let [doc (p/parse-file (fs/file path)
+                          options e/eval-form)
+        hiccup (r/render doc e/eval-render)
+        html (r/html hiccup)]
+    (write-file! (str (fs/strip-ext out) ".html")
+                 html)))
+
+(defn process-md-file! [path out options]
+  (when (:verbose options)
+    (println (str path)))
+  (let [doc (p/parse-file (fs/file path)
+                          options nil)
+        hiccup (r/render doc e/eval-render)
+        html (r/html hiccup)]
+    (write-file! (str (fs/strip-ext out) ".html")
+                 html)))
 
 (defn list-files [src]
   (when-let [entries (sort (.listFiles (fs/file src)))]
@@ -62,15 +81,15 @@
         begin-time (System/nanoTime)]
     (println "Found" (count files) "files.")
     (doseq [path files]
-      (case (fs/extension path)
-        "md" (let [out-path (-> path
-                                (str/replace-first (str src) (str out))
-                                (fs/strip-ext)
-                                (str ".html"))]
-               (process-file! path out-path options))
-        "clj" (process-file! path nil options)
+      (try
         (let [out-path (str/replace-first path (str src) (str out))]
-          (copy-file! path out-path options))))
+          (case (fs/extension path)
+            "md" (process-md-file! path out-path options)
+            "cljmd" (process-cljmd-file! path out-path options)
+            "clj" (process-clj-file! path options)
+            (copy-file! path out-path options)))
+        (catch Exception ex
+          (println (str "ERROR processing " path) ex))))
     (let [end-time (System/nanoTime)]
       (println "DONE!")
       (println "Elapsed time:"
@@ -129,7 +148,7 @@
 (comment
   (use 'criterium.core)
 
-  (-main #_"-v" "test-files" "out")
+  (-main "-v" "test-files" "out")
 
   (require '[taoensso.tufte :as tufte])
   (tufte/add-basic-println-handler! {})
