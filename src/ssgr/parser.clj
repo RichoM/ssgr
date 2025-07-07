@@ -60,6 +60,13 @@
       :spaces (count spaces)
       :marker list-marker})))
 
+(def blockquote
+  (transform-with-token
+   (pp/seq (pp/max space 3)
+           \> (pp/optional \space))
+   (fn [[_ char _]]
+     {:type ::blockquote})))
+
 (def thematic-break
   (transform-with-token
    (pp/seq (pp/max space 3)
@@ -160,7 +167,7 @@
   (when-let [line-prefix (-> ctx :line-prefix)]
     (pp/parse-on line-prefix stream))
   ; We try each line parser in order until we find one that matches
-  (let [parsers [list-item
+  (let [parsers [list-item blockquote
                  thematic-break atx-heading
                  setext-heading-underline
                  indented-code-block code-fence
@@ -847,10 +854,32 @@
     (t/with-token (apply list-fn items)
       (t/stream->token stream begin-pos nil))))
 
+(defn parse-blockquote! [stream ctx]
+  (let [begin-pos (in/position stream)
+        marker (next-line! stream ctx) ; Discard marker
+        blocks (loop [blocks (transient [])]
+                 (if-not (in/end? stream)
+                   (let [{:keys [type] :as block} 
+                         (parse-block! stream ctx)]
+                     (case type
+                       ::blank (persistent! blocks)
+                       (recur (conj! blocks block))))
+                   (persistent! blocks)))]
+    (t/with-token (apply doc/blockquote blocks)
+      (t/stream->token stream begin-pos nil))))
+
+(comment
+  (def stream (in/make-stream ""))
+
+  (parse-block! stream {})
+  
+  )
+
 (defn parse-block! [stream ctx]
   (let [{:keys [type] :as line} (peek-line stream ctx)]
     (case type
       ::list-item (parse-list! stream line ctx)
+      ::blockquote (parse-blockquote! stream ctx)
       ::paragraph (parse-paragraph! stream ctx)
       ::thematic-break (parse-thematic-break! stream ctx)
       ::atx-heading (parse-atx-heading! stream ctx)

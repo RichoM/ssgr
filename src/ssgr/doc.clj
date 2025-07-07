@@ -115,6 +115,10 @@
   {:type ::bullet-list
    :items (vec items)})
 
+(defn blockquote [& blocks]
+  {:type ::blockquote
+   :blocks (vec blocks)})
+
 (defn document [& blocks]
   {:type ::document
    :blocks (vec blocks)})

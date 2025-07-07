@@ -706,6 +706,11 @@
              (d/list-item
               (d/paragraph (d/text "sublist"))))))))))
 
+(deftest blockquote
+  (is (= (parse "> foo")
+         (d/document
+          (d/blockquote (d/paragraph (d/text "foo")))))))
+
 
 (comment 
 
