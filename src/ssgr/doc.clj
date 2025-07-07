@@ -146,6 +146,18 @@
 
 (defmethod as-text ::code-span [{:keys [text]}]
   text)
+  
+(defmethod as-text ::list-item [{:keys [blocks]}]
+  (str/join (keep as-text blocks)))
+
+(defmethod as-text ::ordered-list [{:keys [start items]}]
+  (str/join "\n"
+            (map-indexed (fn [idx item]
+                           (str (+ start idx) ". " (as-text item)))
+                         items)))
+
+(defmethod as-text ::bullet-list [{:keys [items]}]
+  (str/join "\n" (map #(str "- " (as-text %)) items)))
 
 (defmethod as-text ::document [{:keys [blocks]}]
   (str/join (keep as-text blocks)))
