@@ -1,6 +1,8 @@
 (ns ssgr.eval
   (:require [sci.core :as sci]
-            [ssgr.token :as t]))
+            [ssgr.token :as t]
+            [ssgr.parser :as p]
+            [ssgr.renderer :as r]))
 
 (def callbacks (atom []))
 
@@ -24,10 +26,17 @@
           *render*
           @callbacks))
 
+(declare eval-render)
+
+(defn markdown [src]
+  (->> (-> (p/parse src {} nil) :blocks)
+       (map #(r/render % eval-render))))
+
 (def ssgr-fns (sci/create-ns 'ssgr-ns nil))
 (def ssgr-ns {'callbacks (sci/copy-var callbacks ssgr-fns)
               'register-callback! (sci/copy-var register-callback! ssgr-fns)
-              'render (sci/copy-var render ssgr-fns)})
+              'render (sci/copy-var render ssgr-fns)
+              'markdown (sci/copy-var markdown ssgr-fns)})
 
 (def token-fns (sci/create-ns 'token-ns nil))
 (def token-ns {'input-value (sci/copy-var t/input-value token-fns)

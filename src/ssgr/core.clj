@@ -38,8 +38,9 @@
   (try
     (when (:verbose options)
       (println (str path)))
-    (let [doc (p/parse-file (fs/file path) options)
-          hiccup (r/render doc)
+    (let [doc (p/parse-file (fs/file path) 
+                            options e/eval-form)
+          hiccup (r/render doc e/eval-render)
           html (r/html hiccup)]
       (when out 
         (write-file! out html)))

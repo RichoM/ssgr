@@ -1,6 +1,5 @@
 (ns ssgr.renderer
   (:require [ssgr.doc :as doc]
-            [ssgr.eval :as e]
             [hiccup.core :as h]
             [clojure.string :as str]))
 
@@ -8,15 +7,15 @@
 
 (defmulti render* :type)
 
-(defmethod render* ::doc/text [{:keys [text]}]
+(defmethod render* ::doc/text [{:keys [text]} _]
   [:span text])
 
-(defmethod render* ::doc/heading [{:keys [level elements]}]
+(defmethod render* ::doc/heading [{:keys [level elements]} eval-render]
   ; TODO(Richo): If all elements are text we should avoid the spans
   (apply conj [(keyword (str \h level))]
-         (map render elements)))
+         (map #(render % eval-render) elements)))
 
-(defmethod render* ::doc/clojure [{:keys [result]}]
+(defmethod render* ::doc/clojure [{:keys [result]} _]
   result)
 
 (defn relative-url? [url]
@@ -28,69 +27,69 @@
         (str/replace #"\.md$" ".html"))
     url))
 
-(defmethod render* ::doc/link [{:keys [text destination]}]
+(defmethod render* ::doc/link [{:keys [text destination]} eval-render]
   (apply conj [:a {:href (fix-url destination)}]
-         (map render text)))
+         (map #(render % eval-render) text)))
 
-(defmethod render* ::doc/image [{:keys [src description]}]
+(defmethod render* ::doc/image [{:keys [src description]} _]
   [:img {:src src :alt (str/join (keep doc/as-text description))}])
 
-(defmethod render* ::doc/paragraph [{:keys [elements]}]
-  (let [rendered-elements (keep render elements)]
+(defmethod render* ::doc/paragraph [{:keys [elements]} eval-render]
+  (let [rendered-elements (keep #(render % eval-render) elements)]
     (when (seq rendered-elements)
       (apply conj [:p] rendered-elements))))
 
-(defmethod render* ::doc/code-block [{:keys [info text]}]
+(defmethod render* ::doc/code-block [{:keys [info text]} _]
   [:pre [:code {:class info} text]])
 
-(defmethod render* ::doc/code-span [{:keys [text]}]
+(defmethod render* ::doc/code-span [{:keys [text]} _]
   [:code text])
 
-(defmethod render* ::doc/thematic-break [_]
+(defmethod render* ::doc/thematic-break [_ _]
   [:hr])
 
-(defmethod render* ::doc/soft-break [_]
+(defmethod render* ::doc/soft-break [_ _]
   "\n")
 
-(defmethod render* ::doc/hard-break [_]
+(defmethod render* ::doc/hard-break [_ _]
   [:br])
 
-(defmethod render* ::doc/emphasis [{:keys [text]}]
-  (let [rendered-elements (keep render text)]
+(defmethod render* ::doc/emphasis [{:keys [text]} eval-render]
+  (let [rendered-elements (keep #(render % eval-render) text)]
     (when (seq rendered-elements)
       (apply conj [:em] rendered-elements))))
 
-(defmethod render* ::doc/strong-emphasis [{:keys [text]}]
-  (let [rendered-elements (keep render text)]
+(defmethod render* ::doc/strong-emphasis [{:keys [text]} eval-render]
+  (let [rendered-elements (keep #(render % eval-render) text)]
     (when (seq rendered-elements)
       (apply conj [:strong] rendered-elements))))
 
-(defmethod render* ::doc/list-item [{:keys [blocks]}]
-  (let [rendered-blocks (keep render blocks)]
+(defmethod render* ::doc/list-item [{:keys [blocks]} eval-render]
+  (let [rendered-blocks (keep #(render % eval-render) blocks)]
     (when (seq rendered-blocks)
       (apply conj [:li] rendered-blocks))))
 
-(defmethod render* ::doc/ordered-list [{:keys [start items]}]
-  (let [rendered-items (keep render items)
+(defmethod render* ::doc/ordered-list [{:keys [start items]} eval-render]
+  (let [rendered-items (keep #(render % eval-render) items)
         rendered-list (if (not= 1 start)
                         [:ol {:start start}]
                         [:ol])]
     (when (seq rendered-items)
       (apply conj rendered-list rendered-items))))
 
-(defmethod render* ::doc/bullet-list [{:keys [items]}]
-  (let [rendered-items (keep render items)]
+(defmethod render* ::doc/bullet-list [{:keys [items]} eval-render]
+  (let [rendered-items (keep #(render % eval-render) items)]
     (when (seq rendered-items)
       (apply conj [:ul] rendered-items))))
 
-(defmethod render* ::doc/document [{:keys [blocks]}] 
-  (let [rendered-blocks (keep render blocks)]
+(defmethod render* ::doc/document [{:keys [blocks]} eval-render] 
+  (let [rendered-blocks (keep #(render % eval-render) blocks)]
     (when (seq rendered-blocks)
       (apply conj [:div] rendered-blocks))))
 
-(defn render [element]
-  (let [result (render* element)]
-    (e/eval-render element result)))
+(defn render [element eval-render]
+  (let [result (render* element eval-render)]
+    (eval-render element result)))
 
 (defn html [content]
   (try 

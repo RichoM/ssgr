@@ -6,8 +6,7 @@
             [ssgr.token :as t :refer [*debug-verbose-tokens* *parser-file*]]
             [edamame.core :as e]
             [hiccup.compiler :as h.c]
-            [ssgr.doc :as doc]
-            [ssgr.eval :refer [eval-form]]))
+            [ssgr.doc :as doc]))
 
 (def ^:dynamic *debug-verbose-emphasis* false)
 (def ^:dynamic *verbose-eval* false)
@@ -206,32 +205,33 @@
                     (dec column-number))]
     (in/reset-position! stream position)))
 
-(defn eval-clojure [form]
+(defn eval-clojure [form eval-form]
   (let [result (eval-form form)]
     (if (vector? form)
       (h.c/normalize-element result)
       result)))
 
-(defn parse-clojure! [stream]
-  (let [begin-pos (in/position stream)]
-    (when (#{\( \[} (in/peek stream))
-      (try
-        (let [src (subs (in/source stream) begin-pos)
-              reader (e/source-reader src)
-              form (e/parse-next reader (e/normalize-opts {:all true}))
-              result (eval-clojure form)]
-          (advance-stream-to-match! stream reader src)
-          (t/with-token (doc/clojure form result)
-            (t/stream->token stream begin-pos nil)))
-        (catch Exception ex
-          (when *verbose-eval*
-            (let [[line-number column-number]
-                  (find-line-col (in/source stream)
-                                 begin-pos)]
-              (println "ERROR evaluating clojure code at"
-                       *parser-file* (str "(Ln " line-number ", Col " column-number "):")
-                       (ex-message ex))))
-          (in/reset-position! stream begin-pos))))))
+(defn parse-clojure! [stream ctx]
+  (when-let [eval-form (-> ctx :eval-form)]
+    (let [begin-pos (in/position stream)]
+      (when (#{\( \[} (in/peek stream))
+        (try
+          (let [src (subs (in/source stream) begin-pos)
+                reader (e/source-reader src)
+                form (e/parse-next reader (e/normalize-opts {:all true}))
+                result (eval-clojure form eval-form)]
+            (advance-stream-to-match! stream reader src)
+            (t/with-token (doc/clojure form result)
+              (t/stream->token stream begin-pos nil)))
+          (catch Exception ex
+            (when *verbose-eval*
+              (let [[line-number column-number]
+                    (find-line-col (in/source stream)
+                                   begin-pos)]
+                (println "ERROR evaluating clojure code at"
+                         *parser-file* (str "(Ln " line-number ", Col " column-number "):")
+                         (ex-message ex))))
+            (in/reset-position! stream begin-pos)))))))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Inline parsers
@@ -714,7 +714,7 @@
                     (do (consume-chars! stream \space \tab)
                         (recur inlines nil))
                     (process-emphasis inlines)))
-                (if-let [special-inline (or (parse-clojure! stream)
+                (if-let [special-inline (or (parse-clojure! stream ctx)
                                             (parse-code-span! stream ctx))]
                   (recur (-> inlines
                              (condj (close-text inline-text))
@@ -924,21 +924,23 @@
         (recur blocks))
       (persistent! blocks))))
 
-(defn make-context []
-  {:line-prefix nil})
+(defn make-context [eval-form]
+  {:line-prefix nil
+   :eval-form eval-form})
 
 (defn parse
   ([src] (parse src {}))
-  ([src options] (parse src options (make-context)))
-  ([src options ctx]
+  ([src options] (parse src options nil))
+  ([src options eval-form]
    (binding [*debug-verbose-emphasis* (:debug options)
              *debug-verbose-tokens* (:debug options)
              *verbose-eval* (:verbose options)]
      (let [stream (in/make-stream src)
+           ctx (make-context eval-form)
            blocks (parse-blocks! stream ctx)]
        (t/with-token (apply doc/document blocks)
          (t/make-token src 0 (count src) nil))))))
 
-(defn parse-file [file options]
+(defn parse-file [file options eval-form]
   (binding [*parser-file* (str file)]
-    (parse (slurp file) options)))
+    (parse (slurp file) options eval-form)))

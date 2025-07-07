@@ -1,5 +1,6 @@
 (ns ssgr.parser-test
   (:require [clojure.test :refer [deftest is]]
+            [ssgr.eval :as e]
             [ssgr.parser :as p]
             [ssgr.doc :as d]
             [hiccup.compiler :as h.c]
@@ -66,14 +67,17 @@
   (is (p/paragraph? "  Richo"))
   (is (not (p/paragraph? "    Richo"))))
 
+(defn parse [src]
+  (p/parse src {} e/eval-form))
+
 (deftest regular-text
-  (is (= (p/parse "Texto normal")
+  (is (= (parse "Texto normal")
          (d/document
           (d/paragraph
            (d/text "Texto normal"))))))
 
 (deftest paragraph
-  (is (= (p/parse "P1. L1\nP1. L2\n\nP2. L1")
+  (is (= (parse "P1. L1\nP1. L2\n\nP2. L1")
          (d/document
           (d/paragraph (d/text "P1. L1")
                        (d/soft-break)
@@ -81,31 +85,31 @@
           (d/paragraph (d/text "P2. L1"))))))
 
 (deftest atx-heading
-  (is (= (p/parse "# Heading 1")
+  (is (= (parse "# Heading 1")
          (d/document
           (d/heading 1
                      (d/text "Heading 1")))))
-  (is (= (p/parse "  ## Heading 2    \n")
+  (is (= (parse "  ## Heading 2    \n")
          (d/document
           (d/heading 2
                      (d/text "Heading 2"))))))
 
 (deftest atx-heading-with-trailing-hashtags
-  (is (= (p/parse "# Heading#")
+  (is (= (parse "# Heading#")
          (d/document
           (d/heading 1
                      (d/text "Heading#")))))
-  (is (= (p/parse "# Heading #")
+  (is (= (parse "# Heading #")
          (d/document
           (d/heading 1
                      (d/text "Heading")))))
-  (is (= (p/parse "# Heading  ##")
+  (is (= (parse "# Heading  ##")
          (d/document
           (d/heading 1
                      (d/text "Heading"))))))
 
 (deftest thematic-breaks
-  (is (= (p/parse "Texto 1\n***\nTexto 2\n___")
+  (is (= (parse "Texto 1\n***\nTexto 2\n___")
          (d/document
           (d/paragraph (d/text "Texto 1"))
           (d/thematic-break)
@@ -113,67 +117,67 @@
           (d/thematic-break)))))
 
 (deftest setext-headings
-  (is (= (p/parse "Texto 1\n=\nTexto 2\n---")
+  (is (= (parse "Texto 1\n=\nTexto 2\n---")
          (d/document
           (d/heading 1 (d/text "Texto 1"))
           (d/heading 2 (d/text "Texto 2"))))))
 
 (deftest fenced-code-blocks
-  (is (= (p/parse "``` python \n    3 + 4\n```")
+  (is (= (parse "``` python \n    3 + 4\n```")
          (d/document
           (d/code-block
            "python"
            "    3 + 4\n")))))
 
 (deftest indented-code-blocks
-  (is (= (p/parse "    var a := 3 + 4;\n    print(a);")
+  (is (= (parse "    var a := 3 + 4;\n    print(a);")
          (d/document
           (d/code-block ""
                         "var a := 3 + 4;\nprint(a);")))))
 
 (deftest code-spans
-  (is (= (p/parse "`foo`")
+  (is (= (parse "`foo`")
          (d/document
           (d/paragraph (d/code-span "foo")))))
-  (is (= (p/parse "``foo``")
+  (is (= (parse "``foo``")
          (d/document
           (d/paragraph (d/code-span "foo")))))
-  (is (= (p/parse "``foo`bar``")
+  (is (= (parse "``foo`bar``")
          (d/document
           (d/paragraph (d/code-span "foo`bar")))))
-  (is (= (p/parse "``foo`") ; The backticks don't match so it's just text
+  (is (= (parse "``foo`") ; The backticks don't match so it's just text
          (d/document
           (d/paragraph (d/text "``")
                        (d/text "foo")
                        (d/text "`")))))
-  (is (= (p/parse "`` foo ` bar ``")
+  (is (= (parse "`` foo ` bar ``")
          (d/document
           (d/paragraph (d/code-span "foo ` bar")))))
-  (is (= (p/parse "`  ``  `")
+  (is (= (parse "`  ``  `")
          (d/document
           (d/paragraph (d/code-span " `` "))))))
 
 (deftest paragraph-with-code
-  (is (= (p/parse "(println 3 4)\n(+ 3 4)\n\nTest")
+  (is (= (parse "(println 3 4)\n(+ 3 4)\n\nTest")
          (d/document
           (d/paragraph (d/clojure '(println 3 4) nil)
                        (d/soft-break)
                        (d/clojure '(+ 3 4) 7))
           (d/paragraph (d/text "Test")))))
-  (is (= (p/parse "[:div (+ 3 4)]\n\nTest")
+  (is (= (parse "[:div (+ 3 4)]\n\nTest")
          (d/document
           (d/paragraph (d/clojure '[:div (+ 3 4)]
                                   (h.c/normalize-element [:div 7])))
           (d/paragraph (d/text "Test"))))))
 
 (deftest code-inside-heading
-  (is (= (p/parse "# Richo (+ 3 4) capo")
+  (is (= (parse "# Richo (+ 3 4) capo")
          (d/document
           (d/heading 1
                      (d/text "Richo ")
                      (d/clojure '(+ 3 4) 7)
                      (d/text " capo")))))
-  (is (= (p/parse "(def test (atom 42))\n# Richo (do @test) capo")
+  (is (= (parse "(def test (atom 42))\n# Richo (do @test) capo")
          (d/document
           (d/paragraph (d/clojure '(def test (atom 42)) nil))
           (d/heading 1
@@ -182,13 +186,13 @@
                      (d/text " capo"))))))
 
 (deftest code-inside-text
-  (is (= (p/parse "Richo (+ 3 4) capo")
+  (is (= (parse "Richo (+ 3 4) capo")
          (d/document
           (d/paragraph
            (d/text "Richo ")
            (d/clojure '(+ 3 4) 7)
            (d/text " capo")))))
-  (is (= (p/parse "(def test (atom 42))\n(loop [] (when (pos? @test) (swap! test dec) (recur)))\n\nRicho (do @test) [1 2 3] capo")
+  (is (= (parse "(def test (atom 42))\n(loop [] (when (pos? @test) (swap! test dec) (recur)))\n\nRicho (do @test) [1 2 3] capo")
          (d/document
           (d/paragraph
            (d/clojure '(def test (atom 42)) nil)
@@ -204,29 +208,29 @@
            (d/text " capo"))))))
 
 (deftest link
-  (is (= (p/parse "[test](http://url.com)")
+  (is (= (parse "[test](http://url.com)")
          (d/document
           (d/paragraph
            (d/link [(d/text "test")] "http://url.com")))))
-  (is (= (p/parse "[link con `código` adentro](http://url.com)")
+  (is (= (parse "[link con `código` adentro](http://url.com)")
          (d/document
           (d/paragraph
            (d/link [(d/text "link con ")
                     (d/code-span "código")
                     (d/text " adentro")]
                    "http://url.com")))))
-  (is (= (p/parse "Probando un texto con un link en la misma línea: [test](http://url.com)")
+  (is (= (parse "Probando un texto con un link en la misma línea: [test](http://url.com)")
          (d/document
           (d/paragraph
            (d/text "Probando un texto con un link en la misma línea: ")
            (d/link [(d/text "test")] "http://url.com")))))
-  (is (= (p/parse "# Link in heading [test](http://url.com) #######")
+  (is (= (parse "# Link in heading [test](http://url.com) #######")
          (d/document
           (d/heading
            1
            (d/text "Link in heading ")
            (d/link [(d/text "test")] "http://url.com")))))
-  (is (= (p/parse "[invalid[link](test)")
+  (is (= (parse "[invalid[link](test)")
          (d/document
           (d/paragraph
            (d/text "[")
@@ -234,24 +238,24 @@
            (d/link [(d/text "link")] "test"))))))
 
 (deftest clojure-with-blank-lines-in-between
-  (is (= (p/parse "(+ 3\n\n\n4)")
+  (is (= (parse "(+ 3\n\n\n4)")
          (d/document
           (d/paragraph (d/clojure '(+ 3 4) 7))))))
 
 (deftest code-blocks-with-many-lines
-  (is (= (p/parse "```python\nwheelL.setVelocity(MAX_VEL)\nwheelR.setVelocity(MAX_VEL)\n```")
+  (is (= (parse "```python\nwheelL.setVelocity(MAX_VEL)\nwheelR.setVelocity(MAX_VEL)\n```")
          (d/document
           (d/code-block "python"
                         "wheelL.setVelocity(MAX_VEL)\nwheelR.setVelocity(MAX_VEL)\n")))))
 
 (deftest clojure-code-can-be-escaped
-  (is (= (p/parse "Esto no es clojure: \\(+ 3 4)")
+  (is (= (parse "Esto no es clojure: \\(+ 3 4)")
          (d/document
           (d/paragraph (d/text "Esto no es clojure: ")
                        (d/text "(+ 3 4)"))))))
 
 (deftest code-spans-should-not-extend-beyond-paragraph
-  (is (= (p/parse "había una vez ``asdf\n\n\nghi``")
+  (is (= (parse "había una vez ``asdf\n\n\nghi``")
          (d/document
           (d/paragraph (d/text "había una vez ")
                        (d/text "``")
@@ -260,41 +264,41 @@
                        (d/text "``"))))))
 
 (deftest code-spans-edge-cases
-  (is (= (p/parse "``foo\n---``")
+  (is (= (parse "``foo\n---``")
          (d/document
           (d/paragraph (d/code-span "foo ---")))))
-  (is (= (p/parse "``foo\n---\n``")
+  (is (= (parse "``foo\n---\n``")
          (d/document
           (d/heading 2
                      (d/text "``")
                      (d/text "foo"))
           (d/paragraph (d/text "``")))))
-  (is (= (p/parse "``foo\n---\n``bar``")
+  (is (= (parse "``foo\n---\n``bar``")
          (d/document
           (d/heading 2
                      (d/text "``")
                      (d/text "foo"))
           (d/paragraph (d/code-span "bar")))))
-  (is (= (p/parse "``\nfoo\nbar  \nbaz\n``")
+  (is (= (parse "``\nfoo\nbar  \nbaz\n``")
          (d/document
           (d/paragraph (d/code-span "foo bar   baz")))))
-  (is (= (p/parse "`foo\n    bar`")
+  (is (= (parse "`foo\n    bar`")
          (d/document
           (d/paragraph (d/code-span "foo bar"))))))
 
 (deftest images
-  (is (= (p/parse "![foo](url)")
+  (is (= (parse "![foo](url)")
          (d/document
           (d/paragraph (d/image "url" (d/text "foo")))))))
 
 (deftest link-with-slash-inside-text
-  (is (= (p/parse "[li\\nk](url)")
+  (is (= (parse "[li\\nk](url)")
          (d/document
           (d/paragraph (d/link [(d/text "li\\nk")]
                                "url"))))))
 
 (deftest code-spans-have-precedence-over-link-texts
-  (is (= (p/parse "[not a `link](/foo`)")
+  (is (= (parse "[not a `link](/foo`)")
          (d/document
           (d/paragraph
            (d/text "[")
@@ -303,7 +307,7 @@
            (d/text ")"))))))
 
 (deftest code-spans-opening-and-closing-backtick-strings-need-to-be-equal-in-length
-  (is (= (p/parse "`foo``bar``")
+  (is (= (parse "`foo``bar``")
          (d/document
           (d/paragraph
            (d/text "`")
@@ -311,7 +315,7 @@
            (d/code-span "bar"))))))
 
 (deftest atx-heading-with-single-#
-  (is (= (p/parse "#")
+  (is (= (parse "#")
          (d/document
           (d/heading 1)))))
 
@@ -322,26 +326,26 @@
                            (map (fn [chr]
                                   (str "\\" chr)))
                            (str/join))]
-    (is (= (d/as-text (p/parse escaped-chars))
+    (is (= (d/as-text (parse escaped-chars))
            valid-chars)))
   ; Backslashes before other characters are treated as literal backslashes
   (let [string "\\→\\A\\a\\ \\3\\φ\\«"]
-    (is (= (d/as-text (p/parse string))
+    (is (= (d/as-text (parse string))
            string))))
 
 (deftest link-text-with-newline
-  (is (= (p/parse "[foo\n](url)")
+  (is (= (parse "[foo\n](url)")
          (d/document
           (d/paragraph (d/link [(d/text "foo")
                                 (d/soft-break)]
                                "url")))))
-  (is (= (p/parse "[foo\n\n](url)") ; Not a link!
+  (is (= (parse "[foo\n\n](url)") ; Not a link!
          (d/document
           (d/paragraph (d/text "[")
                        (d/text "foo"))
           (d/paragraph (d/text "]")
                        (d/text "(url)")))))
-  (is (= (p/parse "[link\n         with newline](url)")
+  (is (= (parse "[link\n         with newline](url)")
          (d/document
           (d/paragraph (d/link [(d/text "link")
                                 (d/soft-break)
@@ -349,57 +353,57 @@
                                "url"))))))
 
 (deftest soft-breaks
-  (is (= (p/parse "foo\nbar")
+  (is (= (parse "foo\nbar")
          (d/document
           (d/paragraph (d/text "foo")
                        (d/soft-break)
                        (d/text "bar")))))
-  (is (= (p/parse "foo \nbar")
+  (is (= (parse "foo \nbar")
          (d/document
           (d/paragraph (d/text "foo")
                        (d/soft-break)
                        (d/text "bar"))))))
 
 (deftest hard-breaks
-  (is (= (p/parse "foo\\\r\nbar")
+  (is (= (parse "foo\\\r\nbar")
          (d/document
           (d/paragraph (d/text "foo")
                        (d/hard-break)
                        (d/text "bar")))))
-  (is (= (p/parse "foo   \nbar")
+  (is (= (parse "foo   \nbar")
          (d/document
           (d/paragraph (d/text "foo")
                        (d/hard-break)
                        (d/text "bar")))))
-  (is (= (p/parse "foo      \\\r\nbar")
+  (is (= (parse "foo      \\\r\nbar")
          (d/document
           (d/paragraph (d/text "foo      ")
                        (d/hard-break)
                        (d/text "bar")))))
-  (is (= (p/parse "foo  \nbar")
+  (is (= (parse "foo  \nbar")
          (d/document
           (d/paragraph (d/text "foo")
                        (d/hard-break)
                        (d/text "bar")))))
-  (is (= (p/parse "`foo`\\\nbar")
+  (is (= (parse "`foo`\\\nbar")
          (d/document
           (d/paragraph (d/code-span "foo")
                        (d/hard-break)
                        (d/text "bar")))))
-  (is (= (p/parse "`foo`  \\\nbar")
+  (is (= (parse "`foo`  \\\nbar")
          (d/document
           (d/paragraph (d/code-span "foo")
                        (d/text "  ")
                        (d/hard-break)
                        (d/text "bar")))))
-  (is (= (p/parse "`foo`  \nbar")
+  (is (= (parse "`foo`  \nbar")
          (d/document
           (d/paragraph (d/code-span "foo")
                        (d/hard-break)
                        (d/text "bar"))))))
 
 (deftest link-with-other-link-inside
-  (is (= (p/parse "[link con [otro link](url2) adentro](url)")
+  (is (= (parse "[link con [otro link](url2) adentro](url)")
          (d/document
           (d/paragraph (d/text "[")
                        (d/text "link con ")
@@ -410,37 +414,37 @@
                        (d/text "(url)"))))))
 
 (deftest emphasis-with-*
-  (is (= (p/parse "*foo bar*")
+  (is (= (parse "*foo bar*")
          (d/document
           (d/paragraph (d/emphasis (d/text "foo bar"))))))
-  (is (= (p/parse "texto *énfasis*")
+  (is (= (parse "texto *énfasis*")
          (d/document
           (d/paragraph (d/text "texto ")
                        (d/emphasis (d/text "énfasis")))))
       "case-1")
-  (is (= (p/parse "textoo*énfasis*")
+  (is (= (parse "textoo*énfasis*")
          (d/document
           (d/paragraph (d/text "textoo")
                        (d/emphasis (d/text "énfasis")))))
       "case-2a")
-  (is (= (p/parse "texto *+énfasis*")
+  (is (= (parse "texto *+énfasis*")
          (d/document
           (d/paragraph (d/text "texto ")
                        (d/emphasis (d/text "+énfasis")))))
       "case-2b")
-  (is (= (p/parse "texto+*+énfasis*")
+  (is (= (parse "texto+*+énfasis*")
          (d/document
           (d/paragraph (d/text "texto+")
                        (d/emphasis (d/text "+énfasis")))))
       "case-2b'")
-  (is (= (p/parse "textoo*+énfasis*")
+  (is (= (parse "textoo*+énfasis*")
          (d/document
           (d/paragraph (d/text "textoo")
                        (d/text "*")
                        (d/text "+énfasis")
                        (d/text "*"))))
       "bad-case")
-  (is (= (p/parse "textoo *énfasis_")
+  (is (= (parse "textoo *énfasis_")
          (d/document
           (d/paragraph (d/text "textoo ")
                        (d/text "*")
@@ -449,39 +453,39 @@
       "bad-case 2"))
 
 (deftest emphasis-with-_
-  (is (= (p/parse "_foo bar_")
+  (is (= (parse "_foo bar_")
          (d/document
           (d/paragraph (d/emphasis (d/text "foo bar"))))))
-  (is (= (p/parse "texto _énfasis_")
+  (is (= (parse "texto _énfasis_")
          (d/document
           (d/paragraph (d/text "texto ")
                        (d/emphasis (d/text "énfasis")))))
       "case-1")
-  (is (= (p/parse "textoo_énfasis_")
+  (is (= (parse "textoo_énfasis_")
          (d/document
           (d/paragraph (d/text "textoo")
                        (d/text "_")
                        (d/text "énfasis")
                        (d/text "_"))))
       "case-2a")
-  (is (= (p/parse "texto _+énfasis_")
+  (is (= (parse "texto _+énfasis_")
          (d/document
           (d/paragraph (d/text "texto ")
                        (d/emphasis (d/text "+énfasis")))))
       "case-2b")
-  (is (= (p/parse "texto+_+énfasis_")
+  (is (= (parse "texto+_+énfasis_")
          (d/document
           (d/paragraph (d/text "texto+")
                        (d/emphasis (d/text "+énfasis")))))
       "case-2b'")
-  (is (= (p/parse "textoo_+énfasis_")
+  (is (= (parse "textoo_+énfasis_")
          (d/document
           (d/paragraph (d/text "textoo")
                        (d/text "_")
                        (d/text "+énfasis")
                        (d/text "_"))))
       "bad-case")
-  (is (= (p/parse "textoo _énfasis*")
+  (is (= (parse "textoo _énfasis*")
          (d/document
           (d/paragraph (d/text "textoo ")
                        (d/text "_")
@@ -490,17 +494,17 @@
       "bad-case 2"))
 
 (deftest emphasis-with-unmatching-delimiters
-  (is (= (p/parse "texto **énfasis*")
+  (is (= (parse "texto **énfasis*")
          (d/document
           (d/paragraph (d/text "texto ")
                        (d/text "*")
                        (d/emphasis (d/text "énfasis"))))))
-  (is (= (p/parse "texto *énfasis**")
+  (is (= (parse "texto *énfasis**")
          (d/document
           (d/paragraph (d/text "texto ")
                        (d/emphasis (d/text "énfasis"))
                        (d/text "*")))))
-  (is (= (p/parse "texto **énfasis*\ntexto *énfasis**")
+  (is (= (parse "texto **énfasis*\ntexto *énfasis**")
          (d/document
           (d/paragraph (d/text "texto ")
                        (d/emphasis
@@ -510,20 +514,20 @@
                         (d/emphasis (d/text "énfasis"))))))))
 
 (deftest strong-emphasis
-  (is (= (p/parse "*****texto*****")
+  (is (= (parse "*****texto*****")
          (d/document
           (d/paragraph (d/emphasis
                         (d/strong-emphasis
                          (d/strong-emphasis
                           (d/text "texto"))))))))
-  (is (= (p/parse "*****texto******")
+  (is (= (parse "*****texto******")
          (d/document
           (d/paragraph (d/emphasis
                         (d/strong-emphasis
                          (d/strong-emphasis
                           (d/text "texto"))))
                        (d/text "*")))))
-  (is (= (p/parse "******texto*****")
+  (is (= (parse "******texto*****")
          (d/document
           (d/paragraph (d/text "*")
                        (d/emphasis
@@ -532,7 +536,7 @@
                           (d/text "texto")))))))))
 
 (deftest mixing-emph-symbols
-  (is (= (p/parse "_*__foo*__")
+  (is (= (parse "_*__foo*__")
          (d/document
           (d/paragraph
            (d/emphasis
@@ -542,7 +546,7 @@
            (d/text "_"))))))
 
 (deftest emphasis-rules-9-10
-  (is (= (p/parse "*****Hello*world****")
+  (is (= (parse "*****Hello*world****")
          (d/document
           (d/paragraph (d/text "**")
                        (d/emphasis
@@ -552,7 +556,7 @@
                           (d/text "world")))))))))
 
 (deftest intraword-emphasis
-  (is (= (p/parse "wb_robot_step")
+  (is (= (parse "wb_robot_step")
          (d/document
           (d/paragraph (d/text "wb")
                        (d/text "_")
@@ -560,7 +564,7 @@
                        (d/text "_")
                        (d/text "step"))))
       "Invalid for _")
-  (is (= (p/parse "wb*robot*step")
+  (is (= (parse "wb*robot*step")
          (d/document
           (d/paragraph (d/text "wb")
                        (d/emphasis
@@ -569,20 +573,20 @@
       "Only valid for *"))
 
 (deftest emphasis-rule-4
-  (is (= (p/parse "_foo bar _")
+  (is (= (parse "_foo bar _")
          (d/document
           (d/paragraph (d/text "_")
                        (d/text "foo bar ")
                        (d/text "_"))))
       "Example 371")
-  (is (= (p/parse "_(_foo)")
+  (is (= (parse "_(_foo)")
          (d/document 
           (d/paragraph (d/text "_")
                        (d/text "(")
                        (d/text "_")
                        (d/text "foo)"))))
       "Example 372")
-  (is (= (p/parse "_(_foo_)_")
+  (is (= (parse "_(_foo_)_")
          (d/document
           (d/paragraph
            (d/emphasis (d/text "(")
@@ -590,14 +594,14 @@
                         (d/text "foo"))
                        (d/text ")")))))
       "Example 373")
-  (is (= (p/parse "_foo_bar")
+  (is (= (parse "_foo_bar")
          (d/document
           (d/paragraph (d/text "_")
                        (d/text "foo")
                        (d/text "_")
                        (d/text "bar"))))
       "Example 374")
-  (is (= (p/parse "_foo_bar_baz_")
+  (is (= (parse "_foo_bar_baz_")
          (d/document
           (d/paragraph
            (d/emphasis (d/text "foo")
@@ -608,17 +612,17 @@
       "Example 376"))
 
 (deftest ordered-lists
-  (is (= (p/parse "1. Richo")
+  (is (= (parse "1. Richo")
          (d/document
           (d/ordered-list
            1
            (d/list-item (d/paragraph (d/text "Richo")))))))
-  (is (= (p/parse "10. Richo")
+  (is (= (parse "10. Richo")
          (d/document
           (d/ordered-list
            10
            (d/list-item (d/paragraph (d/text "Richo")))))))
-  (is (= (p/parse "1) Richo\n2) Diego")
+  (is (= (parse "1) Richo\n2) Diego")
          (d/document
           (d/ordered-list
            1
@@ -626,22 +630,22 @@
            (d/list-item (d/paragraph (d/text "Diego"))))))))
 
 (deftest bullet-lists
-  (is (= (p/parse "* Richo")
+  (is (= (parse "* Richo")
          (d/document
           (d/bullet-list
            (d/list-item (d/paragraph (d/text "Richo")))))))
-  (is (= (p/parse "+ Richo")
+  (is (= (parse "+ Richo")
          (d/document
           (d/bullet-list
            (d/list-item (d/paragraph (d/text "Richo")))))))
-  (is (= (p/parse "- Richo\n- Diego")
+  (is (= (parse "- Richo\n- Diego")
          (d/document
           (d/bullet-list
            (d/list-item (d/paragraph (d/text "Richo")))
            (d/list-item (d/paragraph (d/text "Diego"))))))))
 
 (deftest two-lists
-  (is (= (p/parse "+ Richo\n* Diego")
+  (is (= (parse "+ Richo\n* Diego")
          (d/document
           (d/bullet-list
            (d/list-item (d/paragraph (d/text "Richo"))))
@@ -649,7 +653,7 @@
            (d/list-item (d/paragraph (d/text "Diego"))))))))
 
 (deftest list-with-sublists
-  (is (= (p/parse "1. item one\n2. item two\n   - sublist\n   - sublist")
+  (is (= (parse "1. item one\n2. item two\n   - sublist\n   - sublist")
          (d/document
           (d/ordered-list
            1
@@ -660,7 +664,7 @@
                          (d/list-item (d/paragraph (d/text "sublist"))))))))))
 
 (deftest deeply-nested-list
-  (is (= (p/parse "1. item one\n2. item two\n   - sublist\n     que continúa en la siguiente línea.\n\n     Y que además tiene otro párrafo.\n   - sublist")
+  (is (= (parse "1. item one\n2. item two\n   - sublist\n     que continúa en la siguiente línea.\n\n     Y que además tiene otro párrafo.\n   - sublist")
          (d/document
           (d/ordered-list
            1
@@ -675,7 +679,7 @@
              (d/list-item (d/paragraph (d/text "sublist")))))))))
   ; NOTE(Richo): This text should parse the same as before, the only difference is that the blank
   ; line between paragraphs also contains the exact number of spaces to be part of the list item
-  (is (= (p/parse "1. item one\n2. item two\n   - sublist\n     que continúa en la siguiente línea.\n     \n     Y que además tiene otro párrafo.\n   - sublist")
+  (is (= (parse "1. item one\n2. item two\n   - sublist\n     que continúa en la siguiente línea.\n     \n     Y que además tiene otro párrafo.\n   - sublist")
          (d/document
           (d/ordered-list
            1
@@ -688,7 +692,7 @@
                                        (d/text "que continúa en la siguiente línea."))
                           (d/paragraph (d/text "Y que además tiene otro párrafo.")))
              (d/list-item (d/paragraph (d/text "sublist")))))))))
-  (is (= (p/parse "1. item one\n   - sublist\n     * sub sub list\n   - sublist")
+  (is (= (parse "1. item one\n   - sublist\n     * sub sub list\n   - sublist")
          (d/document
           (d/ordered-list
            1
@@ -716,7 +720,7 @@
 (def src "- a
 - b")
   
-  (p/parse src)
+  (parse src)
   
   (tap> *1)
 
@@ -734,8 +738,8 @@
  ;   <text> (url) </text>
  ;  </paragraph>
 
-  (p/parse " adentro](url)")
-  (p/parse "[link con [otro link](url2) adentro](url)")
+  (parse " adentro](url)")
+  (parse "[link con [otro link](url2) adentro](url)")
   
   (tap> *1)
 
