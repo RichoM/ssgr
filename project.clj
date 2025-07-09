@@ -16,7 +16,9 @@
                                   [org.clojars.beppu/clj-audio "0.3.0"]
                                   [criterium "0.4.6"]
                                   [com.taoensso/tufte "2.7.0"]
-                                  [djblue/portal "0.59.1"]]
+                                  [djblue/portal "0.59.1"]
+                                  [dev.weavejester/hashp "0.4.0"]]
+                   :injections [(require 'hashp.preload)]
                    :resource-paths ["sounds"]
                    :plugins [[com.jakemccrary/lein-test-refresh "0.24.1"]]
                    :global-vars {*unchecked-math* :warn-on-boxed
