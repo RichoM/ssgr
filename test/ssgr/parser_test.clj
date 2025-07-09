@@ -709,8 +709,47 @@
 (deftest blockquote
   (is (= (parse "> foo")
          (d/document
-          (d/blockquote (d/paragraph (d/text "foo")))))))
+          (d/blockquote (d/paragraph (d/text "foo"))))))
+  (is (= (parse "> foo\nbar")
+         (d/document
+          (d/blockquote (d/paragraph (d/text "foo")
+                                     (d/soft-break)
+                                     (d/text "bar"))))))
+  (is (= (parse "> foo\n>bar")
+         (d/document
+          (d/blockquote (d/paragraph (d/text "foo")
+                                     (d/soft-break)
+                                     (d/text "bar"))))))
+  (is (= (parse "> foo\n> bar")
+         (d/document
+          (d/blockquote (d/paragraph (d/text "foo")
+                                     (d/soft-break)
+                                     (d/text "bar")))))))
 
+(deftest nested-blockquotes
+  (is (= (parse "> foo\n>>bar")
+         (d/document
+          (d/blockquote (d/paragraph (d/text "foo"))
+                        (d/blockquote (d/paragraph (d/text "bar"))))))))
+
+(deftest list-inside-blockquote
+  (is (= (parse "> 1. Richo\n> 2. Diego")
+         (d/document
+          (d/blockquote (d/ordered-list
+                         1
+                         (d/list-item (d/paragraph (d/text "Richo")))
+                         (d/list-item (d/paragraph (d/text "Diego")))))))))
+
+(deftest blockquote-interrupts-lists
+  (is (= (parse "1. Richo\n> 2. Diego")
+         (d/document
+          (d/ordered-list
+           1
+           (d/list-item (d/paragraph (d/text "Richo"))))
+          (d/blockquote
+           (d/ordered-list
+            2
+            (d/list-item (d/paragraph (d/text "Diego")))))))))
 
 (comment 
 
