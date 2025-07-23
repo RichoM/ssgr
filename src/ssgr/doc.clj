@@ -166,4 +166,65 @@
 (defmethod as-text ::document [{:keys [blocks]}]
   (str/join (keep as-text blocks)))
 
-(defmethod as-text :default [_] "")
+(defmethod as-text :default [el] (str "ACAACA! " (:type el)))
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+(defn make-printer []
+  {:lines (atom [])
+   :indent-level (atom 0)})
+
+(defn append-line! [{:keys [lines indent-level] :as printer} line]
+  (swap! lines conj (str (str/join (repeat (* 2 @indent-level) " ")) line))
+  printer)
+
+(defn indent-while! [{:keys [indent-level] :as p} f]
+  (swap! indent-level inc)
+  (f)
+  (swap! indent-level dec)
+  p)
+
+(defn contents [{:keys [lines]}]
+  (str/join "\n" @lines))
+
+(defmulti pretty-print* :type)
+
+(defmethod pretty-print* ::document [{:keys [blocks]} printer]
+  (doto printer
+    (append-line! "DOCUMENT")
+    (indent-while!
+     #(doseq [block blocks]
+        (pretty-print* block printer)))))
+
+(defmethod pretty-print* ::blockquote [{:keys [blocks]} printer]
+  (doto printer
+    (append-line! "BLOCKQUOTE")
+    (indent-while! #(doseq [block blocks]
+                      (pretty-print* block printer)))))
+
+(defmethod pretty-print* ::ordered-list [{:keys [items]} printer]
+  (doto printer
+    (append-line! "ORDERED-LIST")
+    (indent-while! #(doseq [item items]
+                      (pretty-print* item printer)))))
+
+(defmethod pretty-print* ::bullet-list [{:keys [items]} printer]
+  (doto printer
+    (append-line! "BULLET-LIST")
+    (indent-while! #(doseq [item items]
+                      (pretty-print* item printer)))))
+
+(defmethod pretty-print* ::list-item [{:keys [blocks]} printer]
+  (doto printer
+    (append-line! "ITEM")
+    (indent-while! #(doseq [block blocks]
+                      (pretty-print* block printer)))))
+
+(defmethod pretty-print* :default [el printer] 
+  (doto printer
+    (append-line! (as-text el))))
+
+(defn pretty-print [element]
+  (let [printer (make-printer)]
+    (pretty-print* element printer)
+    (println (contents printer))))
