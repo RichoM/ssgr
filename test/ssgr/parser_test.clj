@@ -751,20 +751,61 @@
             2
             (d/list-item (d/paragraph (d/text "Diego")))))))))
 
+(deftest another-ugly-list
+  (is (= (parse "1. A
+   1. AA
+   2. AB
+   3. AC
+2. B
+   1. BA
+   2. BB
+3. C
+   1. CA
+   2. CB
+   3. CC")
+         (d/document
+          (d/ordered-list
+           1
+           (d/list-item 
+            (d/paragraph (d/text "A"))
+            (d/ordered-list
+             1
+             (d/list-item (d/paragraph (d/text "AA")))
+             (d/list-item (d/paragraph (d/text "AB")))
+             (d/list-item (d/paragraph (d/text "AC")))))
+           (d/list-item
+            (d/paragraph (d/text "B"))
+            (d/ordered-list
+             1
+             (d/list-item (d/paragraph (d/text "BA")))
+             (d/list-item (d/paragraph (d/text "BB")))
+             ))
+           (d/list-item
+            (d/paragraph (d/text "C"))
+            (d/ordered-list
+             1
+             (d/list-item (d/paragraph (d/text "CA")))
+             (d/list-item (d/paragraph (d/text "CB")))
+             (d/list-item (d/paragraph (d/text "CC"))))))))))
+
 (comment 
 
-(def src "1. item one
-2. item two
-   - sublist
-     que continúa en la siguiente línea.
-
-     Y que además tiene otro párrafo.
-   - sublist
+(def src "1. A
+   1. AA
+   2. AB
+   3. AC
+2. B
+   1. BA
+   2. BB
+3. C
+   1. CA
+   2. CB
+   3. CC
 ")
 (def src "- a
 - b")
   
-  (parse src)
+  (d/pretty-print (parse src))
   
   (tap> *1)
 

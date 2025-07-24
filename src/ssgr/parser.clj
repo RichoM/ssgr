@@ -13,10 +13,14 @@
 (def ^:dynamic *debug-verbose-emphasis* false)
 
 (defn parse! [parser stream]
+  (let [result (pp/parse-on parser stream)]
+    (when (r/success? result)
+      (r/actual-result result))))
+
+(defn discard! [parser stream]
   (when parser
-    (let [result (pp/parse-on parser stream)]
-      (when (r/success? result)
-        (r/actual-result result)))))
+    (pp/parse-on parser stream)
+    nil))
 
 (defn consume-while! [stream while-fn]
   (loop [result (transient [])]
@@ -189,7 +193,7 @@
 (defn next-line! [stream {:keys [line-prefix]}]
   ; If we have a line-prefix parser, we use it to consume the stream, the result
   ; doesn't matter, we just discard it (I don't know if this is correct, though)
-  (parse! line-prefix stream)
+  (discard! line-prefix stream)
   ; We try each line parser in order until we find one that matches
   (let [parsers [blockquote list-item
                  thematic-break atx-heading
@@ -666,7 +670,7 @@
                                              token))))]
                   (if (contains? #{::paragraph ::indented-code-block} ; TODO(Richo): Check if this works for all inlines
                                  (:type (peek-line stream ctx)))
-                    (do (parse! (:line-prefix ctx) stream)  ; Discard any line prefix
+                    (do (discard! (:line-prefix ctx) stream)  ; Discard any line prefix
                         (consume-chars! stream \space \tab) ; Discard any leading spaces
                         (recur inlines nil))
                     (process-emphasis inlines)))
@@ -826,15 +830,9 @@
                             (persistent! blocks)))))]
     (cons first-block (remove nil? next-blocks))))
 
-(comment
-  (parse "> 1. Richo
-> 2. Diego")
-  (tap> *1)
-  )
-
 (defn parse-list-item! [stream first-line ctx]
   (let [begin-pos (in/position stream)
-        next-line #p (next-line! stream ctx)]
+        next-line (next-line! stream ctx)]
     (if (and (= ::list-item (:type next-line))
              (compatible-list-markers? (:marker next-line)
                                        (:marker first-line)))
@@ -848,23 +846,19 @@
   [stream ctx]
   (let [begin-pos (in/position stream)
         first-line (next-line! stream ctx)
-        new-ctx (-> ctx
-                    (update :line-prefix-s (fn [p]
-                                             (conj (or p [])
-                                                   (str/join "" (repeat (+ (:spaces first-line)
-                                                                           (count (:digits (:marker first-line))) 1)
-                                                                        \space)))))
-                    (update :line-prefix concat-parser
-                            (pp/times space (+ (:spaces first-line)
-                                               (count (:digits (:marker first-line))) 1))))
-
+        new-ctx (update ctx :line-prefix concat-parser
+                        (pp/times space (+ (:spaces first-line)
+                                           (count (:digits (:marker first-line))) 1)))
         first-item (let [blocks (parse-list-item-blocks! stream new-ctx)]
                      (t/with-token (apply doc/list-item blocks)
                        (t/stream->token stream begin-pos nil)))
         items (cons first-item
                     (loop [items (transient [])]
-                      (if-let [item #p (parse-list-item! stream first-line new-ctx)]
-                        (recur (conj! items item))
+                      (if (or (nil? (:line-prefix ctx))
+                              (r/success? (pp/parse-on (:line-prefix ctx) stream)))
+                        (if-let [item (parse-list-item! stream first-line new-ctx)]
+                          (recur (conj! items item))
+                          (persistent! items))
                         (persistent! items))))
         list-fn (case (:type (:marker first-line))
                   ::ordered-list-marker (partial doc/ordered-list
@@ -873,50 +867,41 @@
     (t/with-token (apply list-fn items)
       (t/stream->token stream begin-pos nil))))
 
+(comment
+  (def src "1. A
+   - AA
+     * AAA
+     * AAB
+   - AB
+   - AC
+2. B
+   - BA
+   - BB
+3. C
+   - CA
+   - CB
+   - CC
+")  
+
+  (doc/pretty-print (parse src))
+
+  )
+  
+  
+
 (defn parse-blockquote! [stream ctx]
   (let [begin-pos (in/position stream)
         _marker (next-line! stream ctx) ; Discard marker
-        new-ctx (-> ctx
-                    (update :line-prefix-s (fn [p]
-                                             (conj (or p [])
-                                                   "> ")))
-                    (update :line-prefix concat-parser
-                            blockquote))
+        new-ctx (update ctx :line-prefix concat-parser (pp/optional blockquote))
         blocks (loop [blocks (transient [])]
                  (if-not (in/end? stream)
                    (let [{:keys [type]} (peek-line stream new-ctx)]
                      (case type
                        ::blank (persistent! blocks)
-                       ;::blockquote (persistent! blocks)
                        (recur (conj! blocks (parse-block! stream new-ctx)))))
                    (persistent! blocks)))]
     (t/with-token (apply doc/blockquote blocks)
       (t/stream->token stream begin-pos nil))))
-
-(comment
-  
-  (parse "> 1. Richo\n> 2. Diego")
-
-  (def stream (in/make-stream "> 1. Richo
-          > 2. Diego"))
-  (def ctx {})
-  (next-line! stream ctx)
-  (peek-line stream ctx)
-  (def new-ctx {:line-prefix (pp/optional blockquote)})
-  (def line (peek-line stream ctx))
-
-
-  (+ 3 4)
-  (tap> *1)
-
-  (def stream (in/make-stream "foo\n>bar"))
-  (next-line! stream {:line-prefix (pp/optional blockquote)})
-
-  (pp/parse-on (pp/optional blockquote) stream)
-  (in/peek stream)
-
-
-  )
 
 (defn parse-block! [stream ctx]
   (let [{:keys [type]} (peek-line stream ctx)]
@@ -944,6 +929,7 @@
 
 (defn make-context [eval-form]
   {:line-prefix nil
+   :debug-path []
    :eval-form eval-form})
 
 (defn parse
