@@ -203,7 +203,10 @@
     (loop [[parser & rest] parsers]
       (let [result (pp/parse-on parser stream)]
         (if (r/failure? result)
-          (when rest (recur rest))
+          (if rest 
+            (recur rest)
+            {:type ::paragraph
+             :content ""})
           (r/actual-result result))))))
 
 (defn peek-line [stream ctx]
