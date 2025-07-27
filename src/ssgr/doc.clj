@@ -166,7 +166,7 @@
 (defmethod as-text ::document [{:keys [blocks]}]
   (str/join (keep as-text blocks)))
 
-(defmethod as-text :default [el] (str "ACAACA! " (:type el)))
+(defmethod as-text :default [el] (str " " (:type el) " "))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
@@ -219,6 +219,10 @@
     (append-line! "ITEM")
     (indent-while! #(doseq [block blocks]
                       (pretty-print* block printer)))))
+
+(defmethod pretty-print* ::code-block [{:keys [info text]} printer]
+  (doto printer
+    (append-line! (str "CODE-BLOCK(" text ")"))))
 
 (defmethod pretty-print* :default [el printer] 
   (doto printer
