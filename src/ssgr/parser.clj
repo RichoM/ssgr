@@ -7,7 +7,8 @@
             [ssgr.token :as t :refer [*debug-verbose-tokens* *parser-file*]]
             [edamame.core :as e]
             [hiccup.compiler :as h.c]
-            [ssgr.doc :as doc]))
+            [ssgr.doc :as doc]
+            [ssgr.utils.pprint :refer [pprintln pprint-str]]))
 (require 'hashp.preload)
 
 (def ^:dynamic *debug-verbose-emphasis* false)
@@ -36,9 +37,6 @@
   (let [next (in/peek stream)]
     (when (= char next)
       (in/next! stream))))
-
-(defn concat-parser [previous next]
-  (if previous (pp/seq previous next) next))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Line parsers
@@ -642,6 +640,21 @@
               (conj (delimiter->text close-delimiter)))))
       (conj inlines (delimiter->text close-delimiter)))))
 
+(defn peek-line-prefix [stream ctx]
+  (let [begin-pos (in/position stream)
+        line-prefix (:line-prefix ctx)
+        parse-result (pp/parse-on (pp/token line-prefix) stream)
+        token (when (r/success? parse-result)
+                (r/actual-result parse-result))]
+    (in/reset-position! stream begin-pos)
+    (when token
+      (t/input-value token))))
+
+(defn peek-n [stream n]
+  (let [begin-pos (in/position stream)
+        result (in/take! stream n)]
+    (in/reset-position! stream begin-pos)
+    result))
 
 (defn parse-inlines! [stream ctx]
   (loop [inlines []
@@ -671,8 +684,9 @@
                                                            (doc/hard-break)
                                                            (doc/soft-break))
                                              token))))]
-                  (if (contains? #{::paragraph ::indented-code-block} ; TODO(Richo): Check if this works for all inlines
-                                 (:type (peek-line stream ctx)))
+                  (if (and (some? (peek-line-prefix stream ctx))
+                           (contains? #{::paragraph ::indented-code-block} ; TODO(Richo): Check if this works for all inlines
+                                      (:type (peek-line stream ctx))))
                     (do (discard! (:line-prefix ctx) stream)  ; Discard any line prefix
                         (consume-chars! stream \space \tab) ; Discard any leading spaces
                         (recur inlines nil))
@@ -713,39 +727,42 @@
                                                  (apply concat)))
                          (make-token lines)))]
     (loop [lines (transient [])]
-      (let [{:keys [type] :as next-line} (peek-line stream ctx)]
-        (case type
-          ::paragraph
-          (let [inlines (parse-inlines! stream ctx)]
-            (if (seq inlines)
-              (recur (conj! lines inlines))
-              (make-paragraph (persistent! lines))))
+      (if (and (> (count lines) 0)
+               (nil? (peek-line-prefix stream ctx)))
+        (make-paragraph (persistent! lines))
+        (let [{:keys [type] :as next-line} (peek-line stream ctx)]
+          (case type
+            ::paragraph
+            (let [inlines (parse-inlines! stream ctx)]
+              (if (seq inlines)
+                (recur (conj! lines inlines))
+                (make-paragraph (persistent! lines))))
 
-          ; If we find setext-heading-underline, we convert the whole 
-          ; paragraph to a heading
-          ::setext-heading-underline
-          (let [{:keys [chars]} (next-line! stream ctx)]
-            (make-heading (if (= \- (first chars)) 2 1)
-                          (persistent! lines)))
+                      ; If we find setext-heading-underline, we convert the whole 
+                      ; paragraph to a heading
+            ::setext-heading-underline
+            (let [{:keys [chars]} (next-line! stream ctx)]
+              (make-heading (if (= \- (first chars)) 2 1)
+                            (persistent! lines)))
 
-          ; Thematic breaks can be confused with setext-headings, in
-          ; which case the setext-heading takes precedence
-          ::thematic-break
-          (if (= \- (first (:chars next-line)))
-            (do (next-line! stream ctx) ; discard next line
-                (make-heading 2 (persistent! lines)))
-            (make-paragraph (persistent! lines)))
+                      ; Thematic breaks can be confused with setext-headings, in
+                      ; which case the setext-heading takes precedence
+            ::thematic-break
+            (if (= \- (first (:chars next-line)))
+              (do (next-line! stream ctx) ; discard next line
+                  (make-heading 2 (persistent! lines)))
+              (make-paragraph (persistent! lines)))
 
-          ; Indented code blocks can't interrupt a paragraph, so if
-          ; we found one we just treat it as a valid line
-          ::indented-code-block
-          (let [inlines (parse-inlines! stream ctx)]
-            (if (seq inlines)
-              (recur (conj! lines inlines))
-              (make-paragraph (persistent! lines))))
+                      ; Indented code blocks can't interrupt a paragraph, so if
+                      ; we found one we just treat it as a valid line
+            ::indented-code-block
+            (let [inlines (parse-inlines! stream ctx)]
+              (if (seq inlines)
+                (recur (conj! lines inlines))
+                (make-paragraph (persistent! lines))))
 
-          ; Anything else, simply breaks the paragraph, we do nothing
-          (make-paragraph (persistent! lines)))))))
+                      ; Anything else, simply breaks the paragraph, we do nothing
+            (make-paragraph (persistent! lines))))))))
 
 
 (defn parse-thematic-break! [stream ctx]
@@ -849,16 +866,19 @@
   [stream ctx]
   (let [begin-pos (in/position stream)
         first-line (next-line! stream ctx)
-        new-ctx (update ctx :line-prefix concat-parser
+        new-ctx (update ctx :line-prefix pp/seq
                         (pp/times space (+ (:spaces first-line)
                                            (count (:digits (:marker first-line))) 1)))
-        first-item (let [blocks (parse-list-item-blocks! stream new-ctx)]
-                     (t/with-token (apply doc/list-item blocks)
-                       (t/stream->token stream begin-pos nil)))
+        first-item (if (= ::bullet-list-marker (:type (:marker first-line)))
+                     (let [blocks (parse-list-item-blocks! stream new-ctx)]
+                       (t/with-token (apply doc/list-item blocks)
+                         (t/stream->token stream begin-pos nil)))
+                     (let [blocks (parse-list-item-blocks! stream new-ctx)]
+                       (t/with-token (apply doc/list-item blocks)
+                         (t/stream->token stream begin-pos nil))))
         items (cons first-item
                     (loop [items (transient [])]
-                      (if (or (nil? (:line-prefix ctx))
-                              (r/success? (pp/parse-on (:line-prefix ctx) stream)))
+                      (if (parse! (:line-prefix ctx) stream)
                         (if-let [item (parse-list-item! stream first-line new-ctx)]
                           (recur (conj! items item))
                           (persistent! items))
@@ -872,21 +892,54 @@
 
 (comment
   (def src "1. A
-   - AA
-     * AAA
-     * AAB
-   - AB
-   - AC
+   1. AA
+      * AAA
+      * AAB
+   2. AB
+   3. AC
 2. B
-   - BA
-   - BB
+   1. BA
+   2. BB
 3. C
-   - CA
-   - CB
-   - CC
-")  
+   1. CA
+   2. CB
+   3. CC
+")
 
-  (doc/pretty-print (parse src))
+  (def src "
+  1. A
+     1. AA
+        1. AAA
+        2. AAB
+     2. AB
+     3. AC
+  2. B
+     1. BA
+     2. BB
+  3. C
+     1. CA
+     2. CB
+     3. CC
+  ")
+
+  
+  (def src "
+1. A
+   1. AA
+      1. AAA
+      2. AAB
+   2. AB
+   3. AC
+2. B
+   1. BA
+   2. BB
+3. C
+   1. CA
+   2. CB
+   3. CC
+    ")
+
+    (doc/pretty-print (parse src))
 
   )
   
@@ -895,7 +948,7 @@
 (defn parse-blockquote! [stream ctx]
   (let [begin-pos (in/position stream)
         _marker (next-line! stream ctx) ; Discard marker
-        new-ctx (update ctx :line-prefix concat-parser (pp/optional blockquote))
+        new-ctx (update ctx :line-prefix pp/seq (pp/optional blockquote))
         blocks (loop [blocks (transient [])]
                  (if-not (in/end? stream)
                    (let [{:keys [type]} (peek-line stream new-ctx)]
@@ -907,7 +960,10 @@
       (t/stream->token stream begin-pos nil))))
 
 (defn parse-block! [stream ctx]
-  (let [{:keys [type]} (peek-line stream ctx)]
+  (let [{:keys [type] :as line} (peek-line stream ctx)]
+    ;(pprintln (:line-prefix ctx))
+    ;(println line)
+    ;(println "---")
     (case type
       ::list-item (parse-list! stream ctx)
       ::blockquote (parse-blockquote! stream ctx)
@@ -931,8 +987,7 @@
       (persistent! blocks))))
 
 (defn make-context [eval-form]
-  {:line-prefix nil
-   :debug-path []
+  {:line-prefix (pp/seq)
    :eval-form eval-form})
 
 (defn parse
