@@ -855,6 +855,23 @@
           ")
       "Leftover whitespace should not throw exception!"))
 
+(deftest lists-should-not-consume-trailing-blank-lines
+  (is (= (parse "
+> A
+>
+> * AB
+> * AC
+
+
+B")
+         (d/document
+          (d/blockquote
+           (d/paragraph (d/text "A"))
+           (d/bullet-list
+            (d/list-item (d/paragraph (d/text "AB")))
+            (d/list-item (d/paragraph (d/text "AC")))))
+          (d/paragraph (d/text "B"))))))
+
 (comment 
 
 (def src "1. A
