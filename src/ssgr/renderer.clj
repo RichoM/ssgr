@@ -82,6 +82,11 @@
     (when (seq rendered-items)
       (apply conj [:ul] rendered-items))))
 
+(defmethod render* ::doc/blockquote [{:keys [blocks]} eval-render]
+  (let [rendered-blocks (keep #(render % eval-render) blocks)]
+    (when (seq rendered-blocks)
+      (apply conj [:blockquote] rendered-blocks))))
+
 (defmethod render* ::doc/document [{:keys [blocks]} eval-render] 
   (let [rendered-blocks (keep #(render % eval-render) blocks)]
     (when (seq rendered-blocks)
