@@ -870,7 +870,30 @@ B")
            (d/bullet-list
             (d/list-item (d/paragraph (d/text "AB")))
             (d/list-item (d/paragraph (d/text "AC")))))
+          (d/paragraph (d/text "B")))))
+  ; This next test should be the same as before, the only difference is that the blank
+  ; block now only contains 1 line and also this line contains several spaces (before
+  ; it was just empty)
+  (is (= (parse "
+> A
+>
+> * AB
+> * AC
+          
+B")
+         (d/document
+          (d/blockquote
+           (d/paragraph (d/text "A"))
+           (d/bullet-list
+            (d/list-item (d/paragraph (d/text "AB")))
+            (d/list-item (d/paragraph (d/text "AC")))))
           (d/paragraph (d/text "B"))))))
+
+(deftest heading-followed-by-paragraph-without-blank-line-in-between
+  (is (= (parse "## Heading\nParagraph")
+         (d/document
+          (d/heading 2 (d/text "Heading"))
+          (d/paragraph (d/text "Paragraph"))))))
 
 (comment 
 

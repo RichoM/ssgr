@@ -644,7 +644,7 @@
               (conj (delimiter->text close-delimiter)))))
       (conj inlines (delimiter->text close-delimiter)))))
 
-(defn parse-inlines! [stream ctx]
+(defn parse-inlines! [stream ctx & {:keys [multiline?] :or {multiline? true}}]
   (loop [inlines []
          inline-text nil]
     (cond
@@ -672,8 +672,9 @@
                                                            (doc/hard-break)
                                                            (doc/soft-break))
                                              token))))]
-                  (if (and (some? (peek-parser (:line-prefix ctx) stream))
-                           (contains? #{::paragraph ::indented-code-block} ; TODO(Richo): Check if this works for all inlines
+                  (if (and multiline?
+                           (some? (peek-parser (:line-prefix ctx) stream))
+                           (contains? #{::paragraph ::indented-code-block}
                                       (:type (peek-line stream ctx))))
                     (do (discard! (:line-prefix ctx) stream)  ; Discard any line prefix
                         (consume-chars! stream \space \tab) ; Discard any leading spaces
@@ -765,7 +766,7 @@
     (in/reset-position! stream content-start)
     ; Skip any spaces or tabs before parsing the inline content
     (consume-chars! stream \space \tab)
-    (let [inlines (parse-inlines! stream ctx)]
+    (let [inlines (parse-inlines! stream ctx :multiline? false)]
       (t/with-token (apply doc/heading level inlines)
         (t/stream->token stream begin-pos line)))))
 
@@ -831,15 +832,16 @@
         [next-blocks last-valid-pos]
         (loop [blocks (transient [])
                last-valid-pos (in/position stream)]
-          (if (and (r/success? (pp/parse-on line-prefix stream))
-                   (not (in/end? stream)))
-            (recur (conj! blocks (parse-block! stream ctx))
-                   (in/position stream))
-            (let [{:keys [type]} (peek-line stream ctx)]
-              (case type
-                ::blank (recur (conj! blocks (parse-block! stream ctx))
-                               last-valid-pos)
-                [(persistent! blocks) last-valid-pos]))))]
+          (let [begin-pos (in/position stream)]
+            (if (and (r/success? (pp/parse-on line-prefix stream))
+                     (not (in/end? stream)))
+              (recur (conj! blocks (parse-block! stream ctx))
+                     begin-pos)
+              (let [{:keys [type]} (peek-line stream ctx)]
+                (case type
+                  ::blank (recur (conj! blocks (parse-block! stream ctx))
+                                 begin-pos)
+                  [(persistent! blocks) last-valid-pos])))))]
     ; HACK(Richo): If the last block we found is blank we reset the stream just
     ; before the blank lines. This way we only consume blank lines if they are
     ; inside the list item
@@ -894,43 +896,37 @@
     (str/join "" result)))
 
 (defn parse-blockquote! [stream ctx]
-  (println "Parsing blockquote at" (in/position stream) 
-           (peek-until-newline stream))
   (let [begin-pos (in/position stream)
         _marker (next-line! stream ctx) ; Discard marker
+        marker-parser (pp/seq (:line-prefix ctx) blockquote)
         new-ctx (update ctx :line-prefix pp/seq (pp/optional blockquote))
         blocks (loop [blocks (transient [])]
                  (if-not (in/end? stream)
-                   (let [{:keys [type]} (peek-line stream new-ctx)]
-                     (case type
-                       ::blank (if-let [marker (peek-parser (pp/seq (:line-prefix ctx) blockquote)
-                                                            stream)]
-                                 (do (println "Blockquote continues with a blank line")
-                                     (parse-block! stream new-ctx)
-                                     (recur blocks))
-                                 (do (println "Blockquote end due to blank line")
-                                     (persistent! blocks)))
-                       (let [next-block (parse-block! stream new-ctx)]
-                         (if (= ::blank next-block) ; Ignore blank lines
-                           (do (println "Blockquote end due to blank block")
-                               (persistent! blocks))
-                           (do (println "Blockquote continues with" next-block)
-                               (recur (conj! blocks next-block)))))))
-                   (do (println "Blockquote end due to EOF")
-                       (persistent! blocks))))]
+                   ; If the next block begins with a blockquote marker, no matter what we parse
+                   ; we continue parsing the blockquote. If the next block is not prefixed with
+                   ; a blockquote marker then we stop at blank lines.
+                   (if-let [marker (peek-parser marker-parser stream)]
+                     (let [next-block (parse-block! stream new-ctx)]
+                       (if (= ::blank next-block) ; Ignore blank lines and continue
+                         (recur blocks)
+                         (recur (conj! blocks next-block))))
+                     (let [next-block (parse-block! stream new-ctx)]
+                       (if (= ::blank next-block) ; Ignore blank lines and stop!
+                         (persistent! blocks)
+                         (recur (conj! blocks next-block)))))
+                   (persistent! blocks)))]
     (t/with-token (apply doc/blockquote blocks)
       (t/stream->token stream begin-pos nil))))
 
 (comment
   
-  (parse "
+  (doc/pretty-print (parse "
 > A
 >
 > * AB
 > * AC
-
-
-B")
+          
+B"))
   )
 
 (defn parse-block! [stream ctx]
