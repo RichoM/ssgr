@@ -201,10 +201,7 @@
     (loop [[parser & rest] parsers]
       (let [result (pp/parse-on parser stream)]
         (if (r/failure? result)
-          (if rest 
-            (recur rest)
-            {:type ::paragraph
-             :content ""})
+          (when rest (recur rest))
           (r/actual-result result))))))
 
 (defn peek-line [stream ctx]
@@ -786,7 +783,8 @@
   (loop []
     (when (= ::blank (:type (peek-line stream ctx)))
       (next-line! stream ctx)
-      (recur))))
+      (recur)))
+  ::blank)
 
 (defn parse-indented-code-block! [stream ctx]
   ; NOTE(Richo): We take the actual lines from the tokens because
@@ -840,13 +838,18 @@
 
 (defn parse-list-item-blocks! [stream {:keys [line-prefix] :as ctx}]
   (let [first-block (parse-block! stream ctx)
+        conj-next-block! (fn [blocks]
+                           (let [next-block (parse-block! stream ctx)]
+                             (if (= ::blank next-block) ; Ignore blank lines
+                               blocks
+                               (conj! blocks next-block))))
         next-blocks (loop [blocks (transient [])]
                       (if (and (r/success? (pp/parse-on line-prefix stream))
                                (not (in/end? stream)))
-                        (recur (conj! blocks (parse-block! stream ctx)))
+                        (recur (conj-next-block! blocks))
                         (let [{:keys [type]} (peek-line stream ctx)]
                           (case type
-                            ::blank (recur (conj! blocks (parse-block! stream ctx)))
+                            ::blank (recur (conj-next-block! blocks))
                             (persistent! blocks)))))]
     (cons first-block (remove nil? next-blocks))))
 
@@ -890,61 +893,6 @@
     (t/with-token (apply list-fn items)
       (t/stream->token stream begin-pos nil))))
 
-(comment
-  (def src "1. A
-   1. AA
-      * AAA
-      * AAB
-   2. AB
-   3. AC
-2. B
-   1. BA
-   2. BB
-3. C
-   1. CA
-   2. CB
-   3. CC
-")
-
-  (def src "
-  1. A
-     1. AA
-        1. AAA
-        2. AAB
-     2. AB
-     3. AC
-  2. B
-     1. BA
-     2. BB
-  3. C
-     1. CA
-     2. CB
-     3. CC
-  ")
-
-  
-  (def src "
-1. A
-   1. AA
-      1. AAA
-      2. AAB
-   2. AB
-   3. AC
-2. B
-   1. BA
-   2. BB
-3. C
-   1. CA
-   2. CB
-   3. CC
-    ")
-
-    (doc/pretty-print (parse src))
-
-  )
-  
-  
-
 (defn parse-blockquote! [stream ctx]
   (let [begin-pos (in/position stream)
         _marker (next-line! stream ctx) ; Discard marker
@@ -954,13 +902,16 @@
                    (let [{:keys [type]} (peek-line stream new-ctx)]
                      (case type
                        ::blank (persistent! blocks)
-                       (recur (conj! blocks (parse-block! stream new-ctx)))))
+                       (recur (let [next-block (parse-block! stream new-ctx)]
+                                (if (= ::blank next-block) ; Ignore blank lines
+                                  blocks
+                                  (conj! blocks next-block))))))
                    (persistent! blocks)))]
     (t/with-token (apply doc/blockquote blocks)
       (t/stream->token stream begin-pos nil))))
 
 (defn parse-block! [stream ctx]
-  (let [{:keys [type] :as line} (peek-line stream ctx)]
+  (when-let [{:keys [type] :as line} (peek-line stream ctx)]
     ;(pprintln (:line-prefix ctx))
     ;(println line)
     ;(println "---")
@@ -979,11 +930,12 @@
 (defn parse-blocks! [stream ctx]
   (loop [blocks (transient [])]
     (if-not (in/end? stream)
-      ; If the next-block is nil it means we just parsed blank lines,
-      ; keep going and just ignore the block. We only stop at EOF
+      ; If the next-block is blank, keep going and just ignore the block
       (if-let [next-block (parse-block! stream ctx)]
-        (recur (conj! blocks next-block))
-        (recur blocks))
+        (if (= ::blank next-block)
+          (recur blocks)
+          (recur (conj! blocks next-block)))
+        (persistent! blocks))
       (persistent! blocks))))
 
 (defn make-context [eval-form]
@@ -1006,3 +958,10 @@
 (defn parse-file [file options eval-form]
   (binding [*parser-file* (str file)]
     (parse (slurp file) options eval-form)))
+
+(comment
+  
+  (parse (slurp "test-files/test.md"))
+  
+  
+  )

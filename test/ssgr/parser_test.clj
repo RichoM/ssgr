@@ -837,6 +837,24 @@
              (d/list-item
               (d/paragraph (d/text "CC"))))))))))
 
+(deftest leftover-whitespace-should-not-throw
+  (is (parse "
+    1. A
+       1. AA
+          1. AAA
+          2. AAB
+       2. AB
+       3. AC
+    2. B
+       1. BA
+       2. BB
+    3. C
+       1. CA
+       2. CB
+       3. CC
+          ")
+      "Leftover whitespace should not throw exception!"))
+
 (comment 
 
 (def src "1. A
