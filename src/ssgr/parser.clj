@@ -7,7 +7,8 @@
             [ssgr.token :as t :refer [*debug-verbose-tokens* *parser-file*]]
             [ssgr.doc :as doc]
             [ssgr.utils.pprint :refer [pprintln pprint-str]]))
-(require 'hashp.preload)
+
+; (require 'hashp.preload)
 
 (def ^:dynamic *debug-verbose-emphasis* false)
 
