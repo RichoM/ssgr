@@ -895,6 +895,22 @@ B")
           (d/heading 2 (d/text "Heading"))
           (d/paragraph (d/text "Paragraph"))))))
 
+(deftest fucking-lists
+  (is (= (parse "1. AA.
+AB.
+
+2. BA
+")
+         (d/document
+          (d/ordered-list
+           1
+           (d/list-item
+            (d/paragraph (d/text "AA.")
+                         (d/soft-break)
+                         (d/text "AB.")))
+           (d/list-item
+            (d/paragraph (d/text "BA"))))))))
+
 (comment 
 
 (def src "1. A

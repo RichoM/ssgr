@@ -5,8 +5,6 @@
             [petitparser.results :as r]
             [ssgr.clojure :as c :refer [*verbose-eval*]]
             [ssgr.token :as t :refer [*debug-verbose-tokens* *parser-file*]]
-            [edamame.core :as e]
-            [hiccup.compiler :as h.c]
             [ssgr.doc :as doc]
             [ssgr.utils.pprint :refer [pprintln pprint-str]]))
 (require 'hashp.preload)
@@ -644,6 +642,12 @@
               (conj (delimiter->text close-delimiter)))))
       (conj inlines (delimiter->text close-delimiter)))))
 
+(defn peek-until-newline [stream]
+  (let [begin-pos (in/position stream)
+        result (consume-while! stream (fn [chr] (not= chr \newline)))]
+    (in/reset-position! stream begin-pos)
+    (str/join "" result)))
+
 (defn parse-inlines! [stream ctx & {:keys [multiline?] :or {multiline? true}}]
   (loop [inlines []
          inline-text nil]
@@ -672,13 +676,15 @@
                                                            (doc/hard-break)
                                                            (doc/soft-break))
                                              token))))]
-                  (if (and multiline?
-                           (some? (peek-parser (:line-prefix ctx) stream))
-                           (contains? #{::paragraph ::indented-code-block}
-                                      (:type (peek-line stream ctx))))
-                    (do (discard! (:line-prefix ctx) stream)  ; Discard any line prefix
-                        (consume-chars! stream \space \tab) ; Discard any leading spaces
-                        (recur inlines nil))
+                  (if multiline?
+                    (let [next-line-type (:type (peek-line stream ctx))]
+                      (if (or (= ::paragraph next-line-type)
+                              (and (= ::indented-code-block next-line-type)
+                                   (some? (peek-parser (:line-prefix ctx) stream))))
+                        (do (discard! (:line-prefix ctx) stream) ; Discard any line prefix
+                            (consume-chars! stream \space \tab)  ; Discard any leading spaces
+                            (recur inlines nil))
+                        (process-emphasis inlines)))
                     (process-emphasis inlines)))
                 (if-let [special-inline (or (c/parse-clojure! stream ctx)
                                             (parse-code-span! stream ctx))]
@@ -828,13 +834,14 @@
        (= (:char m1) (:char m2))))
 
 (defn parse-list-item-blocks! [stream {:keys [line-prefix] :as ctx}]
-  (let [first-block (parse-block! stream ctx)
-        [next-blocks last-valid-pos]
+  (let [[next-blocks last-valid-pos]
         (loop [blocks (transient [])
                last-valid-pos (in/position stream)]
-          (let [begin-pos (in/position stream)]
-            (if (and (r/success? (pp/parse-on line-prefix stream))
-                     (not (in/end? stream)))
+          (let [begin-pos (in/position stream)
+                first-block? (= (count blocks) 0)]
+            (if (or first-block?
+                    (and (r/success? (pp/parse-on line-prefix stream))
+                         (not (in/end? stream))))
               (recur (conj! blocks (parse-block! stream ctx))
                      begin-pos)
               (let [{:keys [type]} (peek-line stream ctx)]
@@ -845,55 +852,47 @@
     ; HACK(Richo): If the last block we found is blank we reset the stream just
     ; before the blank lines. This way we only consume blank lines if they are
     ; inside the list item
-    (when (= ::blank (last next-blocks))
+    (when (= ::blank (peek next-blocks))
       (in/reset-position! stream last-valid-pos))
-    (cons first-block (remove #{::blank} next-blocks))))
+    (remove #{::blank} next-blocks)))
 
-(defn parse-list-item! [stream first-line ctx]
-  (let [begin-pos (in/position stream)
-        next-line (next-line! stream ctx)]
-    (if (and (= ::list-item (:type next-line))
-             (compatible-list-markers? (:marker next-line)
-                                       (:marker first-line)))
-      (let [blocks (parse-list-item-blocks! stream ctx)]
-        (t/with-token (apply doc/list-item blocks)
-          (t/stream->token stream begin-pos nil)))
-      (do (in/reset-position! stream begin-pos)
-          nil))))
-
-(defn parse-list!
-  [stream ctx]
-  (let [begin-pos (in/position stream)
-        first-line (next-line! stream ctx)
+(defn parse-list! [stream ctx {:keys [spaces marker]}]
+  (let [begin-list-pos (in/position stream)
         new-ctx (update ctx :line-prefix pp/seq
-                        (pp/times space (+ (:spaces first-line)
-                                           (count (:digits (:marker first-line))) 1)))
-        first-item (if (= ::bullet-list-marker (:type (:marker first-line)))
-                     (let [blocks (parse-list-item-blocks! stream new-ctx)]
-                       (t/with-token (apply doc/list-item blocks)
-                         (t/stream->token stream begin-pos nil)))
-                     (let [blocks (parse-list-item-blocks! stream new-ctx)]
-                       (t/with-token (apply doc/list-item blocks)
-                         (t/stream->token stream begin-pos nil))))
-        items (cons first-item
-                    (loop [items (transient [])]
-                      (if (parse! (:line-prefix ctx) stream)
-                        (if-let [item (parse-list-item! stream first-line new-ctx)]
-                          (recur (conj! items item))
-                          (persistent! items))
-                        (persistent! items))))
-        list-fn (case (:type (:marker first-line))
+                        (pp/times space (+ spaces
+                                           (count (:digits marker)) 1)))
+        [items last-valid-pos]
+        (loop [items (transient [])
+               last-valid-pos begin-list-pos]
+          (let [begin-item-pos (in/position stream)]
+            (if (or (= 0 (count items))
+                    (some? (parse! (:line-prefix ctx) stream)))
+              (let [next-line (next-line! stream ctx)]
+                (if (= ::blank (:type next-line))
+                  (recur (conj! items (do (in/reset-position! stream begin-item-pos)
+                                          (parse-block! stream ctx)))
+                         begin-item-pos)
+                  (if (and (= ::list-item (:type next-line))
+                           (compatible-list-markers? marker (:marker next-line)))
+                    (let [blocks (parse-list-item-blocks! stream new-ctx)
+                          item (t/with-token (apply doc/list-item blocks)
+                                 (t/stream->token stream begin-item-pos nil))]
+                      (recur (conj! items item)
+                             (in/position stream)))
+                    (do (in/reset-position! stream begin-item-pos)
+                        [(persistent! items) last-valid-pos]))))
+              [(persistent! items) last-valid-pos])))
+        list-fn (case (:type marker)
                   ::ordered-list-marker (partial doc/ordered-list
-                                                 (parse-long (:digits (:marker first-line))))
+                                                 (parse-long (:digits marker)))
                   ::bullet-list-marker doc/bullet-list)]
-    (t/with-token (apply list-fn items)
-      (t/stream->token stream begin-pos nil))))
-
-(defn peek-until-newline [stream]
-  (let [begin-pos (in/position stream)
-        result (consume-while! stream (fn [chr] (not= chr \newline)))]
-    (in/reset-position! stream begin-pos)
-    (str/join "" result)))
+    ; HACK(Richo): If the last item we found is blank we reset the stream just
+    ; before the blank item. This way we only consume blank lines if they are
+    ; between list items
+    (when (= ::blank (peek items))
+      (in/reset-position! stream last-valid-pos))
+    (t/with-token (apply list-fn (remove #{::blank} items))
+      (t/stream->token stream begin-list-pos nil))))
 
 (defn parse-blockquote! [stream ctx]
   (let [begin-pos (in/position stream)
@@ -918,21 +917,10 @@
     (t/with-token (apply doc/blockquote blocks)
       (t/stream->token stream begin-pos nil))))
 
-(comment
-  
-  (doc/pretty-print (parse "
-> A
->
-> * AB
-> * AC
-          
-B"))
-  )
-
 (defn parse-block! [stream ctx]
-  (when-let [{:keys [type]} (peek-line stream ctx)]
+  (when-let [{:keys [type] :as line} (peek-line stream ctx)]
     (case type
-      ::list-item (parse-list! stream ctx)
+      ::list-item (parse-list! stream ctx line)
       ::blockquote (parse-blockquote! stream ctx)
       ::paragraph (parse-paragraph! stream ctx)
       ::thematic-break (parse-thematic-break! stream ctx)
