@@ -92,15 +92,21 @@
                   1000000.0)
                "ms"))))
 
-(def cli-options
-  [["-d" "--debug"
-    :default false]
-   ["-v" "--verbose"
-    :default false]
-   ["-h" "--help"]])
+(defmacro project-data [key]
+  ; HACK(Richo): This macro allows to read the project.clj file at compile time
+  `~(let [data (-> "project.clj" slurp read-string)
+          name (str (nth data 1))
+          version (nth data 2)
+          rest (drop 3 data)]
+      ((apply assoc {:name name, :version version} rest) key)))
+
+(def project-name
+  (let [description (project-data :description)
+        version (project-data :version)]
+    (format "%s (%s)" description version)))
 
 (defn usage [options-summary]
-  (->> ["Static Site Generator by Richo (SSGR)"
+  (->> [project-name
         ""
         "Usage: ssgr [options] in out"
         ""
@@ -111,6 +117,13 @@
 (defn error-msg [errors]
   (str "Error:\n\n"
        (str/join \newline errors)))
+
+(def cli-options
+  [["-d" "--debug"
+    :default false]
+   ["-v" "--verbose"
+    :default false]
+   ["-h" "--help"]])
 
 (defn validate-args [args]
   (let [{:keys [arguments errors options summary]} (cli/parse-opts args cli-options)]
@@ -143,6 +156,7 @@
 (comment
   (use 'criterium.core)
 
+  (-main)
   (-main #_"-v" "test-files" "out")
 
   (require '[taoensso.tufte :as tufte])
