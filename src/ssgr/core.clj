@@ -154,16 +154,17 @@
       (process! src out options))))
 
 (comment
-  (use 'criterium.core)
+  (require '[clj-async-profiler.core :as prof])
 
-  (-main)
-  (-main #_"-v" "test-files" "out")
+  (prof/profile
+   (dotimes [i 100]
+     (-main #_"-v" "test-files" "out")))
+  
+  (prof/profile
+   {:event :alloc}
+   (dotimes [i 50]
+     (-main #_"-v" "test-files" "out")))
 
-  (require '[taoensso.tufte :as tufte])
-  (tufte/add-basic-println-handler! {})
-  (tufte/profile
-   {}
-   (-main "test-files" "out"))
 
-  @tufte/pstats
+  (prof/serve-ui 8080)
   )

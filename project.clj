@@ -17,12 +17,16 @@
                                   [criterium "0.4.6"]
                                   [com.taoensso/tufte "2.7.0"]
                                   [djblue/portal "0.59.1"]
-                                  [dev.weavejester/hashp "0.4.0"]]
+                                  [dev.weavejester/hashp "0.4.0"]
+                                  [com.clojure-goes-fast/clj-async-profiler "1.6.2"]]
                    :injections [(require 'hashp.preload)]
                    :resource-paths ["sounds"]
                    :plugins [[com.jakemccrary/lein-test-refresh "0.24.1"]]
                    :global-vars {*unchecked-math* :warn-on-boxed
-                                 *warn-on-reflection* true}}
+                                 *warn-on-reflection* true}
+                   :jvm-opts ["-Djdk.attach.allowAttachSelf"
+                              "-XX:+UnlockDiagnosticVMOptions"
+                              "-XX:+DebugNonSafepoints"]}
              :uberjar {:aot [ssgr.core]
                        :jvm-opts ["-Dclojure.compiler.direct-linking=true"
                                   "-Dclojure.compiler.elide-meta=[:doc :file :line :added]"]}})
