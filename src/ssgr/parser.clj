@@ -194,21 +194,32 @@
 (defn paragraph? [line]
   (pp/matches? paragraph line))
 
-(defn next-line! [stream {:keys [line-prefix]}]
+(defn next-line! [stream {:keys [line-prefix line-parser-cache]}]
   ; If we have a line-prefix parser, we use it to consume the stream, the result
   ; doesn't matter, we just discard it (I don't know if this is correct, though)
   (discard! line-prefix stream)
-  ; We try each line parser in order until we find one that matches
-  (let [parsers [blockquote list-item
-                 thematic-break atx-heading
-                 setext-heading-underline
-                 indented-code-block code-fence
-                 blank paragraph]]
-    (loop [[parser & rest] parsers]
-      (let [result (pp/parse-on parser stream)]
-        (if (r/failure? result)
-          (when rest (recur rest))
-          (r/actual-result result))))))
+  ; Before actually trying to parse we look in the cache, if we find a hit we reset
+  ; the stream to the cached final position and return the cached result
+  (let [begin-pos (in/position stream)
+        [cached-result cached-pos] (get @line-parser-cache begin-pos 
+                                        [::not-found nil])]
+    (if (not= cached-result ::not-found)
+      (do (in/reset-position! stream cached-pos)
+          cached-result)
+      (let [; We try each line parser in order until we find one that matches
+            parsers [blockquote list-item
+                     thematic-break atx-heading
+                     setext-heading-underline
+                     indented-code-block code-fence
+                     blank paragraph]
+            final-result (loop [[parser & rest] parsers]
+                           (let [result (pp/parse-on parser stream)]
+                             (if (r/failure? result)
+                               (when rest (recur rest))
+                               (r/actual-result result))))
+            final-pos (in/position stream)]
+        (vswap! line-parser-cache assoc begin-pos [final-result final-pos])
+        final-result))))
 
 (defn peek-line [stream ctx]
   (let [begin-pos (in/position stream)
@@ -945,7 +956,8 @@
 
 (defn make-context [eval-form]
   {:line-prefix (pp/seq)
-   :eval-form eval-form})
+   :eval-form eval-form
+   :line-parser-cache (volatile! {})})
 
 (defn parse
   ([src] (parse src {}))

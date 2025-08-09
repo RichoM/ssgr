@@ -167,4 +167,12 @@
 
 
   (prof/serve-ui 8080)
+
+  (user/time+ 30000 (-main "test-files" "out"))
+
+  ; Time per call: 374.55 ms   Alloc per call: 238,451,654b   Iterations: 85
+  ; Time per call: 302.02 ms   Alloc per call: 138,063,395b   Iterations: 105
+  ; Time per call: 285.18 ms   Alloc per call: 137,827,990b   Iterations: 106
+
+  (/ 374.55 285.18)
   )
