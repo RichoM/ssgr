@@ -93,12 +93,22 @@
       :spaces (count spaces)
       :marker list-marker})))
 
+(defn parse-list-item-marker! [stream ctx]
+  (let [result (pp/parse-on list-item stream)]
+    (when-not (r/failure? result)
+      (r/actual-result result))))
+
 (def blockquote
   (transform-with-token
    (pp/seq (pp/max space 3)
            \> (pp/optional \space))
    (fn [[_ char _]]
      {:type ::blockquote})))
+
+(defn parse-blockquote-marker! [stream ctx]
+  (let [result (pp/parse-on blockquote stream)]
+    (when-not (r/failure? result)
+      (r/actual-result result))))
 
 (def thematic-break
   (transform-with-token
@@ -111,6 +121,11 @@
    (fn [[_ chars]]
      {:type ::thematic-break
       :chars chars})))
+
+(defn *parse-thematic-break! [stream ctx]
+  (let [result (pp/parse-on thematic-break stream)]
+    (when-not (r/failure? result)
+      (r/actual-result result))))
 
 (def atx-heading
   (transform-with-token
@@ -126,6 +141,11 @@
       :content (t/input-value inline-token)
       :content-start (t/start inline-token)})))
 
+(defn *parse-atx-heading! [stream ctx]
+  (let [result (pp/parse-on atx-heading stream)]
+    (when-not (r/failure? result)
+      (r/actual-result result))))
+
 (def setext-heading-underline
   (transform-with-token
    (pp/seq (pp/max space 3)
@@ -137,6 +157,11 @@
      {:type ::setext-heading-underline
       :chars chars})))
 
+(defn parse-setext-heading-underline! [stream ctx]
+  (let [result (pp/parse-on setext-heading-underline stream)]
+    (when-not (r/failure? result)
+      (r/actual-result result))))
+
 (def indented-code-block
   (transform-with-token
    (pp/seq (pp/flatten (pp/seq (pp/min space 4)
@@ -146,6 +171,11 @@
    (fn [inline-text]
      {:type ::indented-code-block
       :content inline-text})))
+
+(defn *parse-indented-code-block! [stream ctx]
+  (let [result (pp/parse-on indented-code-block stream)]
+    (when-not (r/failure? result)
+      (r/actual-result result))))
 
 (def code-fence
   (transform-with-token
@@ -159,9 +189,19 @@
       :chars chars
       :info-string info-string})))
 
+(defn parse-code-fence! [stream ctx]
+  (let [result (pp/parse-on code-fence stream)]
+    (when-not (r/failure? result)
+      (r/actual-result result))))
+
 (def blank (transform-with-token (pp/seq (pp/star space)
                                          newline-parser)
                                  (constantly {:type ::blank})))
+
+(defn parse-blank! [stream ctx]
+  (let [result (pp/parse-on blank stream)]
+    (when-not (r/failure? result)
+      (r/actual-result result))))
 
 (def paragraph
   (transform-with-token
@@ -172,6 +212,11 @@
    (fn [[_ inline-text]]
      {:type ::paragraph
       :content inline-text})))
+
+(defn *parse-paragraph! [stream ctx]
+  (let [result (pp/parse-on paragraph stream)]
+    (when-not (r/failure? result)
+      (r/actual-result result))))
 
 (defn thematic-break? [line]
   (pp/matches? thematic-break line))
@@ -194,7 +239,7 @@
 (defn paragraph? [line]
   (pp/matches? paragraph line))
 
-(defn next-line! [stream {:keys [line-prefix line-parser-cache]}]
+(defn next-line! [stream {:keys [line-prefix line-parser-cache] :as ctx}]
   ; If we have a line-prefix parser, we use it to consume the stream, the result
   ; doesn't matter, we just discard it (I don't know if this is correct, though)
   (discard! line-prefix stream)
@@ -207,16 +252,15 @@
       (do (in/reset-position! stream cached-pos)
           cached-result)
       (let [; We try each line parser in order until we find one that matches
-            parsers [blockquote list-item
-                     thematic-break atx-heading
-                     setext-heading-underline
-                     indented-code-block code-fence
-                     blank paragraph]
-            final-result (loop [[parser & rest] parsers]
-                           (let [result (pp/parse-on parser stream)]
-                             (if (r/failure? result)
-                               (when rest (recur rest))
-                               (r/actual-result result))))
+            final-result (or (parse-blockquote-marker! stream ctx)
+                             (parse-list-item-marker! stream ctx)
+                             (*parse-thematic-break! stream ctx)
+                             (*parse-atx-heading! stream ctx)
+                             (parse-setext-heading-underline! stream ctx)
+                             (*parse-indented-code-block! stream ctx)
+                             (parse-code-fence! stream ctx)
+                             (parse-blank! stream ctx)
+                             (*parse-paragraph! stream ctx))
             final-pos (in/position stream)]
         (vswap! line-parser-cache assoc begin-pos [final-result final-pos])
         final-result))))
