@@ -132,7 +132,8 @@
             :spaces trailing-spaces
             :marker marker}))))))
 
-(def blockquote
+; TODO(Richo): Can't remove yet because it's used by the line-prefix parser :(
+(def blockquote 
   (transform-with-token
    (pp/seq (pp/max space 3)
            \> (pp/optional \space))
@@ -140,9 +141,13 @@
      {:type ::blockquote})))
 
 (defn parse-blockquote-marker! [stream ctx]
-  (let [result (pp/parse-on blockquote stream)]
-    (when-not (r/failure? result)
-      (r/actual-result result))))
+  (try-parse
+   stream
+   (do (count-spaces! stream 3)
+       (when (= \> (in/next! stream))
+         (when (= \space (in/peek stream))
+           (in/next! stream))
+         {:type ::blockquote}))))
 
 (def thematic-break
   (transform-with-token
