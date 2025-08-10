@@ -6,17 +6,6 @@
             [hiccup.compiler :as h.c]
             [clojure.string :as str]))
 
-(deftest thematic-break-line
-  (is (p/thematic-break? "---"))
-  (is (p/thematic-break? "___"))
-  (is (p/thematic-break? "***"))
-  (is (p/thematic-break? " ---"))
-  (is (p/thematic-break? "   ---"))
-  (is (p/thematic-break? "   -------      \t\t\t\t"))
-  (is (not (p/thematic-break? "    ---")))
-  (is (not (p/thematic-break? "    ---*")))
-  (is (not (p/thematic-break? "    ----- ***"))))
-
 (deftest atx-heading-line
   (is (p/atx-heading? "#"))
   (is (p/atx-heading? "##"))
@@ -114,7 +103,25 @@
           (d/paragraph (d/text "Texto 1"))
           (d/thematic-break)
           (d/paragraph (d/text "Texto 2"))
+          (d/thematic-break))))
+  (is (= (parse "Texto 1\n***      \nTexto 2\n___")
+         (d/document
+          (d/paragraph (d/text "Texto 1"))
+          (d/thematic-break)
+          (d/paragraph (d/text "Texto 2"))
           (d/thematic-break)))))
+
+(deftest more-thematic-breaks
+  (let [thematic-break? #(= % (d/document (d/thematic-break)))]
+    (is (thematic-break? (parse "---")))
+    (is (thematic-break? (parse "___")))
+    (is (thematic-break? (parse "***")))
+    (is (thematic-break? (parse " ---")))
+    (is (thematic-break? (parse "   ---")))
+    (is (thematic-break? (parse "   -------      \t\t\t\t")))
+    (is (not (thematic-break? (parse "    ---"))))
+    (is (not (thematic-break? (parse "    ---*"))))
+    (is (not (thematic-break? (parse "    ----- ***"))))))
 
 (deftest setext-headings
   (is (= (parse "Texto 1\n=\nTexto 2\n---")

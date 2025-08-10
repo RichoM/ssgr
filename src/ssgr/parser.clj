@@ -44,7 +44,7 @@
     (when (= char next)
       (in/next! stream))))
 
-(defn count-spaces! [stream limit]
+(defn count-spaces! ^long [stream ^long limit]
   (loop [count 0]
     (let [chr (in/peek stream)]
       (if (and (< count limit)
@@ -53,7 +53,7 @@
             (recur (inc count)))
         count))))
 
-(defn count-digits! [stream limit]
+(defn count-digits! ^long [stream ^long limit]
   (loop [count 0]
     (let [^char chr (in/peek stream)]
       (if (and chr 
@@ -90,6 +90,18 @@
 
 (def newline-or-end (NewlineOrEndParser.))
 
+(defn parse-newline-or-end! [stream ctx]
+  (try-parse
+   stream
+   (if (in/end? stream)
+     ::end
+     (case (in/next! stream)
+       \return (if (consume-1-char! stream \newline)
+                 "\r\n"
+                 \return)
+       \newline \newline
+       nil))))
+
 (def space (pp/or \space \tab))
 
 (defn transform-with-token [p f]
@@ -111,7 +123,7 @@
         digit-count (count-digits! stream 9)]
     (if (>= digit-count 1)
       (let [digits (substream stream begin-pos)
-            next (in/peek stream)]
+            ^char next (in/peek stream)]
         (when (#{\. \)} next)
           {:type ::ordered-list-marker
            :digits digits
@@ -149,22 +161,26 @@
            (in/next! stream))
          {:type ::blockquote}))))
 
-(def thematic-break
-  (transform-with-token
-   (pp/seq (pp/max space 3)
-           (pp/or (pp/min \- 3)
-                  (pp/min \_ 3)
-                  (pp/min \* 3))
-           (pp/star space)
-           newline-or-end)
-   (fn [[_ chars]]
-     {:type ::thematic-break
-      :chars chars})))
-
 (defn *parse-thematic-break! [stream ctx]
-  (let [result (pp/parse-on thematic-break stream)]
-    (when-not (r/failure? result)
-      (r/actual-result result))))
+  (try-parse
+   stream
+   (do (count-spaces! stream 3)
+       (let [next-char (in/peek stream)]
+         (when (#{\- \_ \*} next-char)
+           (let [chars (consume-chars! stream next-char)]
+             (when (>= (count chars) 3)
+               (consume-while! stream #{\space \tab})
+               (when (parse-newline-or-end! stream ctx)
+                 {:type ::thematic-break
+                  :chars chars}))))))))
+
+(comment
+  
+  (def stream (in/make-stream "---       "))
+  (*parse-thematic-break! stream nil)
+  (in/take! stream 10)
+  (in/end? stream)
+  )
 
 (def atx-heading
   (transform-with-token
@@ -256,9 +272,6 @@
   (let [result (pp/parse-on paragraph stream)]
     (when-not (r/failure? result)
       (r/actual-result result))))
-
-(defn thematic-break? [line]
-  (pp/matches? thematic-break line))
 
 (defn atx-heading? [line]
   (pp/matches? atx-heading line))
@@ -951,7 +964,7 @@
       (in/reset-position! stream last-valid-pos))
     (remove #{::blank} next-blocks)))
 
-(defn parse-list! [stream ctx {:keys [spaces marker]}]
+(defn parse-list! [stream ctx {:keys [^long spaces marker]}]
   (let [begin-list-pos (in/position stream)
         new-ctx (update ctx :line-prefix pp/seq
                         (pp/times space (+ spaces
