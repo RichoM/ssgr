@@ -44,6 +44,38 @@
     (when (= char next)
       (in/next! stream))))
 
+(defn count-spaces! [stream limit]
+  (loop [count 0]
+    (let [chr (in/peek stream)]
+      (if (and (< count limit)
+               (#{\space \tab} chr))
+        (do (in/next! stream)
+            (recur (inc count)))
+        count))))
+
+(defn count-digits! [stream limit]
+  (loop [count 0]
+    (let [^char chr (in/peek stream)]
+      (if (and chr 
+               (< count limit)
+               (Character/isDigit chr))
+        (do (in/next! stream)
+            (recur (inc count)))
+        count))))
+
+(defn substream 
+  ([stream start]
+   (substream stream start (in/position stream)))
+  ([stream start end]
+   (subs (:src stream) start end)))
+
+(defmacro try-parse [stream body]
+  `(let [stream# ~stream
+         begin-pos# (in/position stream#)]
+     (if-some [result# ~body]
+       result#
+       (in/reset-position! stream# begin-pos#))))
+
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Line parsers
 
@@ -67,36 +99,38 @@
                     (f (t/parsed-value token))
                     token))))
 
-(def bullet-list-marker 
-  (pp/transform (pp/or \- \+ \*)
-                (fn [char]
-                  {:type ::bullet-list-marker
-                   :digits "" ; NOTE(Richo): Same interface as ordered-list-markers
-                   :char char})))
+(defn parse-bullet-list-marker! [stream ctx]
+  (let [next (in/peek stream)]
+    (when (#{\- \+ \*} next)
+      {:type ::bullet-list-marker
+       :digits ""
+       :char (in/next! stream)})))
 
-(def ordered-list-marker
-  (pp/transform (pp/seq (pp/flatten (pp/times pp/digit 1 9))
-                        (pp/or \. \)))
-                (fn [[digits delimiter]]
-                  {:type ::ordered-list-marker
-                   :digits digits
-                   :char delimiter})))
-
-(def list-item
-  (transform-with-token
-   (pp/seq (pp/max space 3)
-           (pp/or bullet-list-marker
-                  ordered-list-marker)
-           (pp/times space 1 4))
-   (fn [[_ list-marker spaces]]
-     {:type ::list-item
-      :spaces (count spaces)
-      :marker list-marker})))
+(defn parse-ordered-list-marker! [stream ctx]
+  (let [begin-pos (in/position stream)
+        digit-count (count-digits! stream 9)]
+    (if (>= digit-count 1)
+      (let [digits (substream stream begin-pos)
+            next (in/peek stream)]
+        (when (#{\. \)} next)
+          {:type ::ordered-list-marker
+           :digits digits
+           :char (in/next! stream)}))
+      (in/reset-position! stream begin-pos))))
 
 (defn parse-list-item-marker! [stream ctx]
-  (let [result (pp/parse-on list-item stream)]
-    (when-not (r/failure? result)
-      (r/actual-result result))))
+  (try-parse
+   stream
+   (let [leading-spaces (count-spaces! stream 3)
+         marker (or (parse-bullet-list-marker! stream ctx)
+                    (parse-ordered-list-marker! stream ctx))]
+     (when marker
+       (let [trailing-spaces (count-spaces! stream 4)]
+         (when (>= trailing-spaces 1)
+           ; TODO(Richo): Should I add a token here??? Probably not
+           {:type ::list-item
+            :spaces trailing-spaces
+            :marker marker}))))))
 
 (def blockquote
   (transform-with-token
