@@ -12,6 +12,9 @@
 
 (def ^:dynamic *debug-verbose-emphasis* false)
 
+(defn digit? [chr]
+  (and chr (Character/isDigit ^char chr)))
+
 (defn parse! [parser stream]
   (let [result (pp/parse-on parser stream)]
     (when (r/success? result)
@@ -29,39 +32,56 @@
     (when (r/success? result)
       (r/actual-result result))))
 
-(defn consume-while! [stream while-fn]
+(defn take-while! [stream predicate]
   (loop [result (transient [])]
     (let [chr (in/peek stream)]
-      (if (and chr (while-fn chr))
+      (if (and chr (predicate chr))
         (recur (conj! result (in/next! stream)))
         (persistent! result)))))
 
-(defn consume-chars! [stream & chars]
-  (consume-while! stream (set chars)))
+(defn take-until! [stream predicate]
+  (take-while! stream (complement predicate)))
 
-(defn consume-1-char! [stream char]
+(defn take-chars! [stream & chars]
+  (take-while! stream (set chars)))
+
+(defn take-1-char! [stream char]
   (let [next (in/peek stream)]
     (when (= char next)
       (in/next! stream))))
 
-(defn count-spaces! ^long [stream ^long limit]
+(defn take-max! [stream predicate ^long limit]
+  (loop [result (transient [])
+         count 0]
+    (let [chr (in/peek stream)]
+      (if (and (< count limit)
+               (predicate chr))
+        (recur (conj! result (in/next! stream))
+               (inc count))
+        (persistent! result)))))
+
+(defn count-max! ^long [stream predicate ^long limit]
   (loop [count 0]
     (let [chr (in/peek stream)]
       (if (and (< count limit)
-               (#{\space \tab} chr))
+               (predicate chr))
         (do (in/next! stream)
             (recur (inc count)))
         count))))
 
+(defn count-spaces! ^long [stream ^long limit]
+  (count-max! stream #{\space \tab} limit))
+
 (defn count-digits! ^long [stream ^long limit]
-  (loop [count 0]
-    (let [^char chr (in/peek stream)]
-      (if (and chr 
-               (< count limit)
-               (Character/isDigit chr))
-        (do (in/next! stream)
-            (recur (inc count)))
-        count))))
+  (count-max! stream digit? limit))
+
+(defn peek-at [stream pos]
+  (nth (in/source stream) pos nil))
+
+(defn peek-offset [stream offset]
+  (nth (in/source stream)
+       (+ (in/position stream) offset)
+       nil))
 
 (defn substream 
   ([stream start]
@@ -90,17 +110,23 @@
 
 (def newline-or-end (NewlineOrEndParser.))
 
-(defn parse-newline-or-end! [stream ctx]
+(defn parse-newline! [stream]
+  (case (in/peek stream)
+    \return (do (in/next! stream)
+                (if (= \newline (in/peek stream))
+                  (do (in/next! stream)
+                      "\r\n")
+                  \return))
+    \newline (do (in/next! stream)
+                 \newline)
+    nil))
+
+(defn parse-newline-or-end! [stream]
   (try-parse
    stream
    (if (in/end? stream)
      ::end
-     (case (in/next! stream)
-       \return (if (consume-1-char! stream \newline)
-                 "\r\n"
-                 \return)
-       \newline \newline
-       nil))))
+     (parse-newline! stream))))
 
 (def space (pp/or \space \tab))
 
@@ -111,14 +137,14 @@
                     (f (t/parsed-value token))
                     token))))
 
-(defn parse-bullet-list-marker! [stream ctx]
+(defn parse-bullet-list-marker! [stream]
   (let [next (in/peek stream)]
     (when (#{\- \+ \*} next)
       {:type ::bullet-list-marker
        :digits ""
        :char (in/next! stream)})))
 
-(defn parse-ordered-list-marker! [stream ctx]
+(defn parse-ordered-list-marker! [stream]
   (let [begin-pos (in/position stream)
         digit-count (count-digits! stream 9)]
     (if (>= digit-count 1)
@@ -130,12 +156,12 @@
            :char (in/next! stream)}))
       (in/reset-position! stream begin-pos))))
 
-(defn parse-list-item-marker! [stream ctx]
+(defn parse-list-item-marker! [stream]
   (try-parse
    stream
-   (let [leading-spaces (count-spaces! stream 3)
-         marker (or (parse-bullet-list-marker! stream ctx)
-                    (parse-ordered-list-marker! stream ctx))]
+   (let [_leading-spaces (count-spaces! stream 3)
+         marker (or (parse-bullet-list-marker! stream)
+                    (parse-ordered-list-marker! stream))]
      (when marker
        (let [trailing-spaces (count-spaces! stream 4)]
          (when (>= trailing-spaces 1)
@@ -152,7 +178,7 @@
    (fn [[_ char _]]
      {:type ::blockquote})))
 
-(defn parse-blockquote-marker! [stream ctx]
+(defn parse-blockquote-marker! [stream]
   (try-parse
    stream
    (do (count-spaces! stream 3)
@@ -161,45 +187,33 @@
            (in/next! stream))
          {:type ::blockquote}))))
 
-(defn *parse-thematic-break! [stream ctx]
+(defn *parse-thematic-break! [stream]
   (try-parse
    stream
    (do (count-spaces! stream 3)
        (let [next-char (in/peek stream)]
          (when (#{\- \_ \*} next-char)
-           (let [chars (consume-chars! stream next-char)]
+           (let [chars (take-chars! stream next-char)]
              (when (>= (count chars) 3)
-               (consume-while! stream #{\space \tab})
-               (when (parse-newline-or-end! stream ctx)
+               (take-while! stream #{\space \tab})
+               (when (parse-newline-or-end! stream)
                  {:type ::thematic-break
                   :chars chars}))))))))
 
-(comment
-  
-  (def stream (in/make-stream "---       "))
-  (*parse-thematic-break! stream nil)
-  (in/take! stream 10)
-  (in/end? stream)
-  )
-
-(def atx-heading
-  (transform-with-token
-   (pp/seq (pp/max space 3)
-           (pp/times \# 1 6)
-           (pp/token
-            (pp/optional (pp/seq space
-                                 (pp/plus (pp/negate newline-or-end)))))
-           newline-or-end)
-   (fn [[_ level inline-token]]
-     {:type ::atx-heading
-      :level (count level)
-      :content (t/input-value inline-token)
-      :content-start (t/start inline-token)})))
-
-(defn *parse-atx-heading! [stream ctx]
-  (let [result (pp/parse-on atx-heading stream)]
-    (when-not (r/failure? result)
-      (r/actual-result result))))
+(defn *parse-atx-heading! [stream]
+  (try-parse
+   stream
+   (do (count-spaces! stream 3) ; Discard leading spaces
+       (let [level (count (take-max! stream #{\#} 6))
+             content-start (in/position stream)]
+         (when (>= level 1)
+           (let [content (take-until! stream #{\return \newline})]
+             (parse-newline! stream) ; Discard newline
+             (when (or (empty? content)
+                       (= \space (first content)))
+               {:type ::atx-heading
+                :level level
+                :content-start content-start})))))))
 
 (def setext-heading-underline
   (transform-with-token
@@ -212,7 +226,7 @@
      {:type ::setext-heading-underline
       :chars chars})))
 
-(defn parse-setext-heading-underline! [stream ctx]
+(defn parse-setext-heading-underline! [stream]
   (let [result (pp/parse-on setext-heading-underline stream)]
     (when-not (r/failure? result)
       (r/actual-result result))))
@@ -227,7 +241,7 @@
      {:type ::indented-code-block
       :content inline-text})))
 
-(defn *parse-indented-code-block! [stream ctx]
+(defn *parse-indented-code-block! [stream]
   (let [result (pp/parse-on indented-code-block stream)]
     (when-not (r/failure? result)
       (r/actual-result result))))
@@ -244,7 +258,7 @@
       :chars chars
       :info-string info-string})))
 
-(defn parse-code-fence! [stream ctx]
+(defn parse-code-fence! [stream]
   (let [result (pp/parse-on code-fence stream)]
     (when-not (r/failure? result)
       (r/actual-result result))))
@@ -253,7 +267,7 @@
                                          newline-parser)
                                  (constantly {:type ::blank})))
 
-(defn parse-blank! [stream ctx]
+(defn parse-blank! [stream]
   (let [result (pp/parse-on blank stream)]
     (when-not (r/failure? result)
       (r/actual-result result))))
@@ -268,13 +282,10 @@
      {:type ::paragraph
       :content inline-text})))
 
-(defn *parse-paragraph! [stream ctx]
+(defn *parse-paragraph! [stream]
   (let [result (pp/parse-on paragraph stream)]
     (when-not (r/failure? result)
       (r/actual-result result))))
-
-(defn atx-heading? [line]
-  (pp/matches? atx-heading line))
 
 (defn setext-heading-underline? [line]
   (pp/matches? setext-heading-underline line))
@@ -304,15 +315,15 @@
       (do (in/reset-position! stream cached-pos)
           cached-result)
       (let [; We try each line parser in order until we find one that matches
-            final-result (or (parse-blockquote-marker! stream ctx)
-                             (parse-list-item-marker! stream ctx)
-                             (*parse-thematic-break! stream ctx)
-                             (*parse-atx-heading! stream ctx)
-                             (parse-setext-heading-underline! stream ctx)
-                             (*parse-indented-code-block! stream ctx)
-                             (parse-code-fence! stream ctx)
-                             (parse-blank! stream ctx)
-                             (*parse-paragraph! stream ctx))
+            final-result (or (parse-blockquote-marker! stream)
+                             (parse-list-item-marker! stream)
+                             (*parse-thematic-break! stream)
+                             (*parse-atx-heading! stream)
+                             (parse-setext-heading-underline! stream)
+                             (*parse-indented-code-block! stream)
+                             (parse-code-fence! stream)
+                             (parse-blank! stream)
+                             (*parse-paragraph! stream))
             final-pos (in/position stream)]
         (vswap! line-parser-cache assoc begin-pos [final-result final-pos])
         final-result))))
@@ -364,14 +375,14 @@
 (defn parse-code-span! [stream ctx]
   (when (= \` (in/peek stream))
     (let [begin-pos (in/position stream)
-          opening (consume-chars! stream \`)
+          opening (take-chars! stream \`)
           begin-content (in/position stream)
           [content closing]
           (loop [content (transient [])]
             (let [next-char (in/peek stream)]
               (case next-char
                 ; The closing and opening must be of equal length
-                \` (let [closing (consume-chars! stream \`)]
+                \` (let [closing (take-chars! stream \`)]
                      (if (= (count closing)
                             (count opening))
                        [(persistent! content) closing]
@@ -383,14 +394,14 @@
                              (when (contains? #{::paragraph ::indented-code-block}
                                               (:type (peek-line stream ctx)))
                                ; Discard leading spaces
-                               (consume-chars! stream \space \tab)
+                               (take-chars! stream \space \tab)
                                (recur (conj! content \space))))
                 \return (do (in/next! stream) ; Discard newline
-                            (consume-1-char! stream \newline) ; Discard newline (if any)
+                            (take-1-char! stream \newline) ; Discard newline (if any)
                             (when (contains? #{::paragraph ::indented-code-block}
                                              (:type (peek-line stream ctx)))
                               ; Discard leading spaces
-                              (consume-chars! stream \space \tab)
+                              (take-chars! stream \space \tab)
                               (recur (conj! content \space))))
 
                 ; Anything else is appended to the content
@@ -466,9 +477,6 @@
 (defn parse-line-breaks! [stream]
   (parse! line-break-parser stream))
 
-(defn peek-at [stream pos]
-  (nth (in/source stream) pos nil))
-
 (defn append-next! [inline-text stream]
   (if inline-text
     (-> inline-text
@@ -521,7 +529,7 @@
 
 (defn parse-emph-delimiter! [stream char]
   (let [prev-char (or (peek-at stream (dec (in/position stream))) \space)
-        chars (consume-chars! stream char)
+        chars (take-chars! stream char)
         next-char (or (in/peek stream) \space)]
     {:type ::delimiter
      :text (str/join chars)
@@ -752,7 +760,7 @@
 
 (defn peek-until-newline [stream]
   (let [begin-pos (in/position stream)
-        result (consume-while! stream (fn [chr] (not= chr \newline)))]
+        result (take-while! stream (fn [chr] (not= chr \newline)))]
     (in/reset-position! stream begin-pos)
     (str/join "" result)))
 
@@ -790,7 +798,7 @@
                               (and (= ::indented-code-block next-line-type)
                                    (some? (peek-parser (:line-prefix ctx) stream))))
                         (do (discard! (:line-prefix ctx) stream) ; Discard any line prefix
-                            (consume-chars! stream \space \tab)  ; Discard any leading spaces
+                            (take-chars! stream \space \tab)  ; Discard any leading spaces
                             (recur inlines nil))
                         (process-emphasis inlines)))
                     (process-emphasis inlines)))
@@ -879,7 +887,7 @@
     ; We reset the stream to the beginning of the content (skipping all the #)
     (in/reset-position! stream content-start)
     ; Skip any spaces or tabs before parsing the inline content
-    (consume-chars! stream \space \tab)
+    (take-chars! stream \space \tab)
     (let [inlines (parse-inlines! stream ctx :multiline? false)]
       (t/with-token (apply doc/heading level inlines)
         (t/stream->token stream begin-pos line)))))

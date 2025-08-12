@@ -6,17 +6,6 @@
             [hiccup.compiler :as h.c]
             [clojure.string :as str]))
 
-(deftest atx-heading-line
-  (is (p/atx-heading? "#"))
-  (is (p/atx-heading? "##"))
-  (is (p/atx-heading? "###"))
-  (is (p/atx-heading? "####"))
-  (is (p/atx-heading? "#####"))
-  (is (p/atx-heading? "######"))
-  (is (not (p/atx-heading? "    #")))
-  (is (not (p/atx-heading? "#Richo")))
-  (is (not (p/atx-heading? "    ----- ***"))))
-
 (deftest setext-heading-underline-line
   (is (p/setext-heading-underline? "-"))
   (is (p/setext-heading-underline? "="))
@@ -72,6 +61,30 @@
                        (d/soft-break)
                        (d/text "P1. L2"))
           (d/paragraph (d/text "P2. L1"))))))
+
+(deftest atx-heading-line
+  (let [atx-heading? #(= :ssgr.doc/heading (-> % :blocks first :type))]
+    (is (atx-heading? (parse "#")))
+    (is (atx-heading? (parse "##")))
+    (is (atx-heading? (parse "###")))
+    (is (atx-heading? (parse "####")))
+    (is (atx-heading? (parse "#####")))
+    (is (atx-heading? (parse "######")))
+    (is (not (atx-heading? (parse "    #"))))
+    (is (not (atx-heading? (parse "#Richo"))))
+    (is (not (atx-heading? (parse "    ----- ***"))))))
+
+(deftest atx-heading-with-different-newlines
+  (is (= (parse "#\n")
+         (d/document (d/heading 1))))
+  (is (= (parse "#\r\n")
+         (d/document (d/heading 1))))
+  (is (= (parse "#\ntexto")
+         (d/document (d/heading 1)
+                     (d/paragraph (d/text "texto")))))
+  (is (= (parse "#\r\ntexto")
+         (d/document (d/heading 1)
+                     (d/paragraph (d/text "texto"))))))
 
 (deftest atx-heading
   (is (= (parse "# Heading 1")
