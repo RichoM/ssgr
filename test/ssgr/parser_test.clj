@@ -6,13 +6,6 @@
             [hiccup.compiler :as h.c]
             [clojure.string :as str]))
 
-(deftest setext-heading-underline-line
-  (is (p/setext-heading-underline? "-"))
-  (is (p/setext-heading-underline? "="))
-  (is (p/setext-heading-underline? "------   "))
-  (is (p/setext-heading-underline? "   -"))
-  (is (not (p/setext-heading-underline? "    -")))
-  (is (not (p/setext-heading-underline? "-="))))
 
 (deftest indented-code-block-line
   (is (p/indented-code-block? "    a"))
@@ -135,6 +128,21 @@
     (is (not (thematic-break? (parse "    ---"))))
     (is (not (thematic-break? (parse "    ---*"))))
     (is (not (thematic-break? (parse "    ----- ***"))))))
+
+(deftest setext-heading-underline-line
+  (let [setext-heading-underline?
+        (fn [src]
+          (let [doc (parse (str "title\n" src))
+                heading (-> doc :blocks first)]
+            (and (= :ssgr.doc/heading (:type heading))
+                 (= [(d/text "title")] (:elements heading))
+                 (= 1 (count (:blocks doc))))))]
+    (is (setext-heading-underline? "-"))
+    (is (setext-heading-underline? "="))
+    (is (setext-heading-underline? "------   "))
+    (is (setext-heading-underline? "   -"))
+    (is (not (setext-heading-underline? "    -")))
+    (is (not (setext-heading-underline? "-=")))))
 
 (deftest setext-headings
   (is (= (parse "Texto 1\n=\nTexto 2\n---")

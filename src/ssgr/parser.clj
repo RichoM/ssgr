@@ -69,6 +69,14 @@
             (recur (inc count)))
         count))))
 
+(defn count-while! ^long [stream predicate]
+  (loop [count 0]
+    (let [chr (in/peek stream)]
+      (if (predicate chr)
+        (do (in/next! stream)
+            (recur (inc count)))
+        count))))
+
 (defn count-spaces! ^long [stream ^long limit]
   (count-max! stream #{\space \tab} limit))
 
@@ -215,21 +223,17 @@
                 :level level
                 :content-start content-start})))))))
 
-(def setext-heading-underline
-  (transform-with-token
-   (pp/seq (pp/max space 3)
-           (pp/or (pp/plus \-)
-                  (pp/plus \=))
-           (pp/star space)
-           newline-or-end)
-   (fn [[_ chars]]
-     {:type ::setext-heading-underline
-      :chars chars})))
-
 (defn parse-setext-heading-underline! [stream]
-  (let [result (pp/parse-on setext-heading-underline stream)]
-    (when-not (r/failure? result)
-      (r/actual-result result))))
+  (try-parse
+   stream
+   (do (count-spaces! stream 3) ; Discard leading spaces
+       (let [next-char (in/peek stream)]
+         (when (#{\- \=} next-char)
+           (let [chars (take-chars! stream next-char)]
+             (count-while! stream #{\space \tab}) ; Discard trailing spaces
+             (when (parse-newline-or-end! stream)
+               {:type ::setext-heading-underline
+                :chars chars})))))))
 
 (def indented-code-block
   (transform-with-token
@@ -287,9 +291,6 @@
     (when-not (r/failure? result)
       (r/actual-result result))))
 
-(defn setext-heading-underline? [line]
-  (pp/matches? setext-heading-underline line))
-
 (defn indented-code-block? [line]
   (pp/matches? indented-code-block line))
 
@@ -302,7 +303,7 @@
 (defn paragraph? [line]
   (pp/matches? paragraph line))
 
-(defn next-line! [stream {:keys [line-prefix line-parser-cache] :as ctx}]
+(defn next-line! [stream {:keys [line-prefix line-parser-cache]}]
   ; If we have a line-prefix parser, we use it to consume the stream, the result
   ; doesn't matter, we just discard it (I don't know if this is correct, though)
   (discard! line-prefix stream)
