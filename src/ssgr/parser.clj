@@ -78,7 +78,7 @@
 (defn peek-at [stream pos]
   (nth (in/source stream) pos nil))
 
-(defn peek-offset [stream offset]
+(defn peek-offset [stream ^long offset]
   (nth (in/source stream)
        (+ (in/position stream) offset)
        nil))
