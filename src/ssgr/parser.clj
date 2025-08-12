@@ -65,7 +65,8 @@
 (defn count-max! ^long [stream predicate ^long limit]
   (loop [count 0]
     (let [chr (in/peek stream)]
-      (if (and (< count limit)
+      (if (and chr
+               (< count limit)
                (predicate chr))
         (do (in/next! stream)
             (recur (inc count)))
@@ -74,7 +75,7 @@
 (defn count-while! ^long [stream predicate]
   (loop [count 0]
     (let [chr (in/peek stream)]
-      (if (predicate chr)
+      (if (and chr (predicate chr))
         (do (in/next! stream)
             (recur (inc count)))
         count))))
