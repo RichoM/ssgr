@@ -6,15 +6,6 @@
             [hiccup.compiler :as h.c]
             [clojure.string :as str]))
 
-(deftest code-fence-line
-  (is (p/code-fence? "```"))
-  (is (p/code-fence? "````"))
-  (is (p/code-fence? "~~~"))
-  (is (p/code-fence? "~~~```"))
-  (is (p/code-fence? "```python    [[[]]]```"))
-  (is (p/code-fence? "   ```python"))
-  (is (not (p/code-fence? "    ```python"))))
-
 (deftest blank-line
   (is (p/blank? "\n"))
   (is (p/blank? "\t\n"))
@@ -141,6 +132,15 @@
          (d/document
           (d/heading 1 (d/text "Texto 1"))
           (d/heading 2 (d/text "Texto 2"))))))
+
+(deftest code-fence-line
+  (let [code-fence? #(= :ssgr.doc/code-block (-> % :blocks first :type))]
+    (is (code-fence? (parse "```")))
+    (is (code-fence? (parse "````")))
+    (is (code-fence? (parse "~~~")))
+    (is (code-fence? (parse "~~~```")))
+    (is (code-fence? (parse "```python    [[[]]]```")))
+    (is (code-fence? (parse "   ```python")))))
 
 (deftest fenced-code-blocks
   (is (= (parse "``` python \n    3 + 4\n```")

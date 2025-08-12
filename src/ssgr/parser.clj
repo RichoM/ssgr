@@ -17,6 +17,10 @@
 
 (def space? #{\space \tab})
 
+(def code-fence-char? #{\` \~})
+
+(def newline-char? #{\return \newline})
+
 (defn parse! [parser stream]
   (let [result (pp/parse-on parser stream)]
     (when (r/success? result)
@@ -79,6 +83,9 @@
         (do (in/next! stream)
             (recur (inc count)))
         count))))
+
+(defn count-until! ^long [stream predicate]
+  (count-while! stream (complement predicate)))
 
 (defn count-spaces! ^long [stream ^long limit]
   (count-max! stream space? limit))
@@ -218,7 +225,7 @@
        (let [level (count (take-max! stream #{\#} 6))
              content-start (in/position stream)]
          (when (>= level 1)
-           (let [content (take-until! stream #{\return \newline})]
+           (let [content (take-until! stream newline-char?)]
              (parse-newline! stream) ; Discard newline
              (when (or (empty? content)
                        (= \space (first content)))
@@ -243,27 +250,26 @@
    stream
    (let [spaces (count-while! stream space?)]
      (when (>= spaces 4)
-       (let [content (take-until! stream #{\return \newline})]
+       (let [content (take-until! stream newline-char?)]
          (when (seq content)
            (parse-newline! stream)
            {:type ::indented-code-block}))))))
 
-(def code-fence
-  (transform-with-token
-   (pp/seq (pp/max space 3)
-           (pp/or (pp/min \` 3)
-                  (pp/min \~ 3))
-           (pp/flatten (pp/star (pp/negate newline-or-end)))
-           newline-or-end)
-   (fn [[_ chars info-string]]
-     {:type ::code-fence
-      ;:chars chars
-      :info-string info-string})))
-
 (defn parse-code-fence! [stream]
-  (let [result (pp/parse-on code-fence stream)]
-    (when-not (r/failure? result)
-      (r/actual-result result))))
+  (try-parse
+   stream
+   (do (count-spaces! stream 3) ; Discard leading spaces
+       (let [chars (count-while! stream code-fence-char?)]
+         (when (>= chars 3)
+           (let [info-string-begin (in/position stream)
+                 info-string-count (count-until! stream newline-char?)
+                 info-string (if (zero? info-string-count)
+                               ""
+                               (substream stream info-string-begin))]
+             (parse-newline! stream) ; Discard newline
+             {:type ::code-fence
+              :info-string info-string}))))))
+
 
 (def blank (transform-with-token (pp/seq (pp/star space)
                                          newline-parser)
@@ -290,8 +296,6 @@
     (when-not (r/failure? result)
       (r/actual-result result))))
 
-(defn code-fence? [line]
-  (pp/matches? code-fence line))
 
 (defn blank? [line]
   (pp/matches? blank line))
