@@ -1,5 +1,6 @@
 (ns ssgr.parser-test
   (:require [clojure.test :refer [deftest is]]
+            [petitparser.input-stream :as in]
             [ssgr.eval :as e]
             [ssgr.parser :as p]
             [ssgr.doc :as d]
@@ -7,13 +8,15 @@
             [clojure.string :as str]))
 
 (deftest blank-line
-  (is (p/blank? "\n"))
-  (is (p/blank? "\t\n"))
-  (is (p/blank? "   \n"))
-  (is (p/blank? "    \n"))
-  (is (not (p/blank? "asdf\n")))
-  (is (not (p/blank? "  asdf\n")))
-  (is (not (p/blank? "    asdf\n"))))
+  (let [blank? #(= {:type :ssgr.parser/blank}
+                   (p/parse-blank! (in/make-stream %)))]
+    (is (blank? "\n"))
+    (is (blank? "\t\n"))
+    (is (blank? "   \n"))
+    (is (blank? "    \n"))
+    (is (not (blank? "asdf\n")))
+    (is (not (blank? "  asdf\n")))
+    (is (not (blank? "    asdf\n")))))
 
 (deftest paragraph-line
   (is (p/paragraph? "Richo"))

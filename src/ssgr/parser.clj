@@ -270,15 +270,12 @@
              {:type ::code-fence
               :info-string info-string}))))))
 
-
-(def blank (transform-with-token (pp/seq (pp/star space)
-                                         newline-parser)
-                                 (constantly {:type ::blank})))
-
 (defn parse-blank! [stream]
-  (let [result (pp/parse-on blank stream)]
-    (when-not (r/failure? result)
-      (r/actual-result result))))
+  (try-parse
+   stream
+   (do (count-while! stream space?) ; Discard all spaces
+       (when (parse-newline! stream)         
+         {:type ::blank}))))
 
 (def paragraph
   (transform-with-token
@@ -296,9 +293,6 @@
     (when-not (r/failure? result)
       (r/actual-result result))))
 
-
-(defn blank? [line]
-  (pp/matches? blank line))
 
 (defn paragraph? [line]
   (pp/matches? paragraph line))
