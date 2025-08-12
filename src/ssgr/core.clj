@@ -196,4 +196,6 @@
   ; Time per call: 796,30 ms   Alloc per call: 254.175.497b   Iterations: 38
   ; Time per call: 689,66 ms   Alloc per call: 254.058.073b   Iterations: 45
   ; Time per call: 676,88 ms   Alloc per call: 254.052.411b   Iterations: 45
+  ; Time per call: 708,28 ms   Alloc per call: 257.838.506b   Iterations: 43
+  ; Time per call: 631,97 ms   Alloc per call: 257.706.644b   Iterations: 49
   )
