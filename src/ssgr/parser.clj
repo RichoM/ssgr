@@ -222,7 +222,7 @@
   (try-parse
    stream
    (do (count-spaces! stream 3) ; Discard leading spaces
-       (let [level (count (take-max! stream #{\#} 6))
+       (let [level (count-max! stream #{\#} 6)
              content-start (in/position stream)]
          (when (>= level 1)
            (let [content (take-until! stream newline-char?)]
