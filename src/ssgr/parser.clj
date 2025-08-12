@@ -237,20 +237,15 @@
                {:type ::setext-heading-underline
                 :chars chars})))))))
 
-(def indented-code-block
-  (transform-with-token
-   (pp/seq (pp/flatten (pp/seq (pp/min space 4)
-                               (pp/plus (pp/negate pp/space))
-                               (pp/star (pp/negate newline-or-end))))
-           newline-or-end)
-   (fn [inline-text]
-     {:type ::indented-code-block
-      :content inline-text})))
-
 (defn *parse-indented-code-block! [stream]
-  (let [result (pp/parse-on indented-code-block stream)]
-    (when-not (r/failure? result)
-      (r/actual-result result))))
+  (try-parse
+   stream
+   (let [spaces (count-while! stream space?)]
+     (when (>= spaces 4)
+       (let [content (take-until! stream #{\return \newline})]
+         (when (seq content)
+           (parse-newline! stream)
+           {:type ::indented-code-block}))))))
 
 (def code-fence
   (transform-with-token
@@ -261,7 +256,7 @@
            newline-or-end)
    (fn [[_ chars info-string]]
      {:type ::code-fence
-      :chars chars
+      ;:chars chars
       :info-string info-string})))
 
 (defn parse-code-fence! [stream]
@@ -286,15 +281,13 @@
            newline-or-end)
    (fn [[_ inline-text]]
      {:type ::paragraph
-      :content inline-text})))
+      ;:content inline-text
+      })))
 
 (defn *parse-paragraph! [stream]
   (let [result (pp/parse-on paragraph stream)]
     (when-not (r/failure? result)
       (r/actual-result result))))
-
-(defn indented-code-block? [line]
-  (pp/matches? indented-code-block line))
 
 (defn code-fence? [line]
   (pp/matches? code-fence line))
@@ -903,46 +896,43 @@
   ::blank)
 
 (defn parse-indented-code-block! [stream ctx]
-  ; NOTE(Richo): We take the actual lines from the tokens because
+  ; NOTE(Richo): We take the actual lines from the stream because
   ; the code blocks should preserve whatever the user typed. 
   ; However, since we're parsing an indented block code, we need 
   ; to remove the first 4 indentation spaces.
   (let [begin-pos (in/position stream)
         lines (loop [lines (transient [])]
-                (let [{:keys [type]} (peek-line stream ctx)]
+                (let [line-begin (in/position stream)
+                      {:keys [type]} (peek-line stream ctx)]
                   (if (= ::indented-code-block type)
-                    (recur (conj! lines (next-line! stream ctx)))
-                    (persistent! lines))))
-        line-contents (map #(-> % meta :token t/input-value (subs 4))
-                           lines)]
-    (t/with-token (doc/code-block "" (str/join line-contents))
+                    (do (next-line! stream ctx)
+                        (recur (conj! lines (subs (substream stream line-begin) 4))))
+                    (persistent! lines))))]
+    (t/with-token (doc/code-block "" (str/join lines))
       (t/stream->token stream begin-pos lines))))
 
 (defn parse-fenced-code-block! [stream ctx]
   (let [begin-pos (in/position stream)
         opening (next-line! stream ctx)
         lines (loop [lines (transient [])]
-                (if-let [{:keys [type] :as next} (peek-line stream ctx)]
-                  (if-not (and (= ::code-fence type)
-                               (str/blank? (:info-string next))
-                               (= (-> opening :chars first)
-                                  (-> next :chars first))
-                               (<= (-> opening :chars count)
-                                   (-> next :chars count)))
-                    (recur (conj! lines (next-line! stream ctx)))
-                    (persistent! lines))
-                  (persistent! lines)))
+                (let [line-begin (in/position stream)]
+                  (if-let [{:keys [type] :as next} (peek-line stream ctx)]
+                    (if-not (and (= ::code-fence type)
+                                 (str/blank? (:info-string next))
+                                 (= (-> opening :chars first)
+                                    (-> next :chars first))
+                                 (<= (-> opening :chars count)
+                                     (-> next :chars count)))
+                      (do (next-line! stream ctx)
+                          (recur (conj! lines (substream stream line-begin))))
+                      (persistent! lines))
+                    (persistent! lines))))
 
         ; We may or may not have a closing fence
         closing (when (= ::code-fence (:type (peek-line stream ctx)))
-                  (next-line! stream ctx))
-
-        ; NOTE(Richo): We take the actual lines from the tokens because
-        ; the code blocks should preserve whatever the user typed
-        line-contents (map #(-> % meta :token t/input-value)
-                           lines)]
+                  (next-line! stream ctx))]
     (t/with-token (doc/code-block (str/trim (:info-string opening))
-                                  (str/join line-contents))
+                                  (str/join lines))
       (t/stream->token stream begin-pos
                        [opening lines closing]))))
 

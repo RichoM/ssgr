@@ -6,14 +6,6 @@
             [hiccup.compiler :as h.c]
             [clojure.string :as str]))
 
-
-(deftest indented-code-block-line
-  (is (p/indented-code-block? "    a"))
-  (is (p/indented-code-block? "    a "))
-  (is (p/indented-code-block? "     Richo capo    "))
-  (is (not (p/indented-code-block? "     ")))
-  (is (not (p/indented-code-block? "   Richo"))))
-
 (deftest code-fence-line
   (is (p/code-fence? "```"))
   (is (p/code-fence? "````"))
@@ -156,6 +148,14 @@
           (d/code-block
            "python"
            "    3 + 4\n")))))
+
+(deftest indented-code-block-line
+  (let [indented-code-block? #(= :ssgr.doc/code-block (-> % :blocks first :type))]
+    (is (indented-code-block? (parse "    a")))
+    (is (indented-code-block? (parse "    a ")))
+    (is (indented-code-block? (parse "     Richo capo    ")))
+    (is (not (indented-code-block? (parse "     "))))
+    (is (not (indented-code-block? (parse "   Richo"))))))
 
 (deftest indented-code-blocks
   (is (= (parse "    var a := 3 + 4;\n    print(a);")
