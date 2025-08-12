@@ -15,6 +15,8 @@
 (defn digit? [chr]
   (and chr (Character/isDigit ^char chr)))
 
+(def space? #{\space \tab})
+
 (defn parse! [parser stream]
   (let [result (pp/parse-on parser stream)]
     (when (r/success? result)
@@ -78,7 +80,7 @@
         count))))
 
 (defn count-spaces! ^long [stream ^long limit]
-  (count-max! stream #{\space \tab} limit))
+  (count-max! stream space? limit))
 
 (defn count-digits! ^long [stream ^long limit]
   (count-max! stream digit? limit))
@@ -203,7 +205,7 @@
          (when (#{\- \_ \*} next-char)
            (let [chars (take-chars! stream next-char)]
              (when (>= (count chars) 3)
-               (take-while! stream #{\space \tab})
+               (take-while! stream space?)
                (when (parse-newline-or-end! stream)
                  {:type ::thematic-break
                   :chars chars}))))))))
@@ -230,7 +232,7 @@
        (let [next-char (in/peek stream)]
          (when (#{\- \=} next-char)
            (let [chars (take-chars! stream next-char)]
-             (count-while! stream #{\space \tab}) ; Discard trailing spaces
+             (count-while! stream space?) ; Discard trailing spaces
              (when (parse-newline-or-end! stream)
                {:type ::setext-heading-underline
                 :chars chars})))))))
