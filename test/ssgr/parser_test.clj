@@ -939,23 +939,22 @@ AB.
            (d/list-item
             (d/paragraph (d/text "BA"))))))))
 
+(deftest indented-code-block-inside-list-item
+  ; TODO(Richo): I add this test as a reminder for future me. However, since I found this bug 
+  ; while refactoring the parser I can't fix it right now. So I leave it commented...
+  #_(is (= (parse "1. text\n\n       code")
+           (d/document
+            (d/ordered-list
+             1
+             (d/list-item
+              (d/paragraph (d/text "text"))
+              (d/code-block "" "code")))))))
+
 (comment 
 
-(def src "1. A
-   1. AA
-   2. AB
-   3. AC
-2. B
-   1. BA
-   2. BB
-3. C
-   1. CA
-   2. CB
-   3. CC
-")
-(def src "- a
-- b")
-  
+(def src "1. text\n\n       code")
+
+  (parse "    code")
   (d/pretty-print (parse src))
   (d/pretty-print *1)
   (tap> *1)
