@@ -289,13 +289,14 @@
       })))
 
 (defn *parse-paragraph! [stream]
-  (let [result (pp/parse-on paragraph stream)]
-    (when-not (r/failure? result)
-      (r/actual-result result))))
-
-
-(defn paragraph? [line]
-  (pp/matches? paragraph line))
+  (try-parse
+   stream
+   (do (count-spaces! stream 3) ; Discard leading spaces
+       (when-not (in/end? stream)
+         (when-not (space? (in/peek stream))
+           (count-until! stream newline-char?)
+           (parse-newline! stream)
+           {:type ::paragraph})))))
 
 (defn next-line! [stream {:keys [line-prefix line-parser-cache]}]
   ; If we have a line-prefix parser, we use it to consume the stream, the result

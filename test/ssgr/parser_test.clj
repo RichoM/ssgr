@@ -18,12 +18,6 @@
     (is (not (blank? "  asdf\n")))
     (is (not (blank? "    asdf\n")))))
 
-(deftest paragraph-line
-  (is (p/paragraph? "Richo"))
-  (is (p/paragraph? "Richo  "))
-  (is (p/paragraph? "  Richo"))
-  (is (not (p/paragraph? "    Richo"))))
-
 (defn parse [src]
   (p/parse src {} e/eval-form))
 
