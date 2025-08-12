@@ -277,17 +277,6 @@
        (when (parse-newline! stream)         
          {:type ::blank}))))
 
-(def paragraph
-  (transform-with-token
-   (pp/seq (pp/max space 3)
-           (pp/flatten [(pp/plus (pp/negate pp/space))
-                        (pp/star (pp/negate newline-or-end))])
-           newline-or-end)
-   (fn [[_ inline-text]]
-     {:type ::paragraph
-      ;:content inline-text
-      })))
-
 (defn *parse-paragraph! [stream]
   (try-parse
    stream
