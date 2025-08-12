@@ -159,7 +159,7 @@
   (prof/profile
    (dotimes [i 100]
      (-main #_"-v" "test-files" "out")))
-  
+
   (prof/profile
    {:event :alloc}
    (dotimes [i 50]
@@ -168,11 +168,32 @@
 
   (prof/serve-ui 8080)
 
+  ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+  ;; Mac
   (user/time+ 30000 (-main "test-files" "out"))
 
-  ; Time per call: 374.55 ms   Alloc per call: 238,451,654b   Iterations: 85
-  ; Time per call: 302.02 ms   Alloc per call: 138,063,395b   Iterations: 105
-  ; Time per call: 285.18 ms   Alloc per call: 137,827,990b   Iterations: 106
+  ; Time per call: 374.55 ms   Alloc per call: 238,451,654b   Iterations: 85   (without cache)
+  ; Time per call: 302.02 ms   Alloc per call: 138,063,395b   Iterations: 105  (with cache)
+  ; Time per call: 285.18 ms   Alloc per call: 137,827,990b   Iterations: 106  (with cache)
 
-  (/ 374.55 285.18)
+
+  ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+  ;; WINDOWS
+
+  (user/time+ 30000 (-main "test-files" "out"))
+
+  ; Without cache
+  ; Time per call: 2,03 s   Alloc per call: 789.383.213b   Iterations: 15
+  ; Time per call: 1,47 s   Alloc per call: 788.834.863b   Iterations: 21
+  ; Time per call: 1,44 s   Alloc per call: 788.815.114b   Iterations: 21
+
+  ; With cache
+  ; Time per call: 953,32 ms   Alloc per call: 434.416.927b   Iterations: 33
+  ; Time per call: 955,02 ms   Alloc per call: 434.397.790b   Iterations: 33
+  ; Time per call: 935,76 ms   Alloc per call: 434.387.573b   Iterations: 34
+
+  ; After removing petitparser from line parsers
+  ; Time per call: 796,30 ms   Alloc per call: 254.175.497b   Iterations: 38
+  ; Time per call: 689,66 ms   Alloc per call: 254.058.073b   Iterations: 45
+  ; Time per call: 676,88 ms   Alloc per call: 254.052.411b   Iterations: 45
   )
