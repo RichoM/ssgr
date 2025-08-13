@@ -154,9 +154,9 @@
 (defmethod as-text ::list-item [{:keys [blocks]}]
   (str/join (keep as-text blocks)))
 
-(defmethod as-text ::ordered-list [{:keys [start items]}]
+(defmethod as-text ::ordered-list [{:keys [^long start items]}]
   (str/join "\n"
-            (map-indexed (fn [idx item]
+            (map-indexed (fn [^long idx item]
                            (str (+ start idx) ". " (as-text item)))
                          items)))
 
@@ -175,7 +175,7 @@
    :indent-level (atom 0)})
 
 (defn append-line! [{:keys [lines indent-level] :as printer} line]
-  (swap! lines conj (str (str/join (repeat (* 2 @indent-level) " ")) line))
+  (swap! lines conj (str (str/join (repeat (* 2 ^long @indent-level) " ")) line))
   printer)
 
 (defn indent-while! [{:keys [indent-level] :as p} f]
