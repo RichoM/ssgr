@@ -4,7 +4,6 @@
   :license {:name "MIT"
             :url "https://mit-license.org/"}
   :dependencies [[org.clojure/clojure "1.12.0"]
-                 [markdown-clj "1.12.2"]
                  [hiccup "1.0.5"]
                  [babashka/fs "0.5.23"]
                  [org.babashka/sci "0.9.44"]
