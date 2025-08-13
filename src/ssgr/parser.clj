@@ -1,12 +1,9 @@
 (ns ssgr.parser
   (:require [clojure.string :as str]
             [petitparser.input-stream :as in]
-            [petitparser.core :as pp]
-            [petitparser.results :as r]
             [ssgr.clojure :as c :refer [*verbose-eval*]]
             [ssgr.token :as t :refer [*debug-verbose-tokens* *parser-file*]]
-            [ssgr.doc :as doc]
-            [ssgr.utils.pprint :refer [pprintln pprint-str]]))
+            [ssgr.doc :as doc]))
 
 ; (require 'hashp.preload)
 
@@ -20,11 +17,6 @@
 (def code-fence-char? #{\` \~})
 
 (def newline-char? #{\return \newline})
-
-(defn parse! [parser stream]
-  (let [result (pp/parse-on parser stream)]
-    (when (r/success? result)
-      (r/actual-result result))))
 
 (defn peek-parser [parser stream]
   (let [begin-pos (in/position stream)
@@ -111,17 +103,6 @@
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Line parsers
 
-(def newline-parser (pp/or "\r\n" \return \newline))
-
-(defrecord NewlineOrEndParser []
-  petitparser.parsers.Parser
-  (parse-on [_self stream]
-    (if (in/end? stream)
-      (r/success ::end)
-      (pp/parse-on newline-parser stream))))
-
-(def newline-or-end (NewlineOrEndParser.))
-
 (defn parse-newline! [stream]
   (case (in/peek stream)
     \return (do (in/next! stream)
@@ -139,15 +120,6 @@
    (if (in/end? stream)
      ::end
      (parse-newline! stream))))
-
-(def space (pp/or \space \tab))
-
-(defn transform-with-token [p f]
-  (pp/transform (pp/token p)
-                (fn [token]
-                  (t/with-token
-                    (f (t/parsed-value token))
-                    token))))
 
 (defn parse-bullet-list-marker! [stream]
   (let [next (in/peek stream)]
@@ -181,14 +153,6 @@
            {:type ::list-item
             :spaces trailing-spaces
             :marker marker}))))))
-
-; TODO(Richo): Can't remove yet because it's used by the line-prefix parser :(
-(def blockquote 
-  (transform-with-token
-   (pp/seq (pp/max space 3)
-           \> (pp/optional \space))
-   (fn [[_ char _]]
-     {:type ::blockquote})))
 
 (defn parse-blockquote-marker! [stream]
   (try-parse
@@ -281,13 +245,6 @@
            (parse-newline! stream)
            {:type ::paragraph})))))
 
-(defn discard-line-prefix! [stream {:keys [line-prefix]}]
-  (let [begin-pos (in/position stream)
-        result (line-prefix stream)]
-    (when-not result
-      (in/reset-position! stream begin-pos))
-    result))
-
 (defn parse-line-prefix! [stream {:keys [line-prefix]}]
   (let [begin-pos (in/position stream)
         result (line-prefix stream)]
@@ -296,15 +253,12 @@
     result))
 
 (defn peek-line-prefix [stream {:keys [line-prefix]}]
-  (let [begin-pos (in/position stream)
-        result (line-prefix stream)]
-    (in/reset-position! stream begin-pos)
-    result))
+  (peek-parser line-prefix stream))
 
 (defn next-line! [stream {:keys [line-parser-cache] :as ctx}]
   ; If we have a line-prefix parser, we use it to consume the stream, the result
   ; doesn't matter, we just discard it (I don't know if this is correct, though)
-  (discard-line-prefix! stream ctx)
+  (parse-line-prefix! stream ctx)
   ; Before actually trying to parse we look in the cache, if we find a hit we reset
   ; the stream to the cached final position and return the cached result
   (let [begin-pos (in/position stream)
@@ -797,7 +751,7 @@
                       (if (or (= ::paragraph next-line-type)
                               (and (= ::indented-code-block next-line-type)
                                    (peek-line-prefix stream ctx)))
-                        (do (discard-line-prefix! stream ctx) ; Discard any line prefix
+                        (do (parse-line-prefix! stream ctx) ; Discard any line prefix
                             (take-chars! stream \space \tab)  ; Discard any leading spaces
                             (recur inlines nil))
                         (process-emphasis inlines)))
