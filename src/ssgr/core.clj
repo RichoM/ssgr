@@ -182,6 +182,13 @@
   ; Time per call: 254.40 ms   Alloc per call: 86,738,459b   Iterations: 121
   ; Time per call: 252.06 ms   Alloc per call: 86,736,994b   Iterations: 122
 
+
+  ; After removing petitparser from line-prefix
+  ; Time per call: 233.03 ms   Alloc per call: 50,860,398b   Iterations: 136
+  ; Time per call: 223.10 ms   Alloc per call: 50,858,196b   Iterations: 144
+  ; Time per call: 206.81 ms   Alloc per call: 50,855,321b   Iterations: 155
+  ; Time per call: 206.47 ms   Alloc per call: 50,854,240b   Iterations: 157
+
   ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
   ;; WINDOWS
 
