@@ -205,4 +205,9 @@
   ; Time per call: 517,32 ms   Alloc per call: 146.745.054b   Iterations: 61
   ; Time per call: 490,19 ms   Alloc per call: 146.748.615b   Iterations: 66
 
+  ; After removing petitparser from line-prefix
+  ; Time per call: 606,54 ms   Alloc per call: 145.854.363b   Iterations: 50
+  ; Time per call: 516,06 ms   Alloc per call: 145.756.805b   Iterations: 61
+  ; Time per call: 507,82 ms   Alloc per call: 145.743.720b   Iterations: 61
+  ; Time per call: 506,00 ms   Alloc per call: 145.728.546b   Iterations: 61
   )
