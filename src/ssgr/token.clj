@@ -1,17 +1,27 @@
 (ns ssgr.token
-  (:require [petitparser.input-stream :as in]
-            [petitparser.token :as t]))
-
-(def input-value t/input-value)
-(def make-token t/make-token)
-(def source t/source)
-(def start t/start)
-(def stop t/stop)
-(def count t/count)
-(def parsed-value t/parsed-value)
+  (:refer-clojure :exclude [count])
+  (:require [ssgr.input-stream :as in]))
 
 (def ^:dynamic *debug-verbose-tokens* false)
 (def ^:dynamic *parser-file* nil)
+
+(defn make-token [source start count value]
+  {:source source
+   :start start
+   :count count
+   :parsed-value value})
+
+(defn source [token] (:source token))
+(defn start [token] (:start token))
+(defn count [token] (:count token))
+(defn parsed-value [token] (:parsed-value token))
+
+(defn stop [{:keys [^long start ^long count]}]
+  (+ start count))
+
+(defn input-value [{:keys [source ^long start ^long count]}]
+  (subs source start (+ start count)))
+
 
 (defn assoc-input-value [token]
   (if *debug-verbose-tokens*
