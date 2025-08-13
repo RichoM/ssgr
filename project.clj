@@ -1,4 +1,4 @@
-(defproject ssgr "1.0"
+(defproject ssgr "1.1"
   :description "Static Site Generator by Richo"
   :url "https://github.com/RichoM/ssgr"
   :license {:name "MIT"
