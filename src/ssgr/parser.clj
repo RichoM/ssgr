@@ -277,17 +277,6 @@
        (when (parse-newline! stream)         
          {:type ::blank}))))
 
-(def paragraph
-  (transform-with-token
-   (pp/seq (pp/max space 3)
-           (pp/flatten [(pp/plus (pp/negate pp/space))
-                        (pp/star (pp/negate newline-or-end))])
-           newline-or-end)
-   (fn [[_ inline-text]]
-     {:type ::paragraph
-      ;:content inline-text
-      })))
-
 (defn *parse-paragraph! [stream]
   (try-parse
    stream
@@ -466,12 +455,13 @@
                        (conj! content (in/next! stream))))))]
       (when content (str/join content)))))
 
-(def line-break-parser (pp/seq (pp/star \space)
-                               (pp/optional \\)
-                               newline-parser))
-
 (defn parse-line-breaks! [stream]
-  (parse! line-break-parser stream))
+  (try-parse
+   stream
+   (let [spaces (take-chars! stream \space)
+         backspace (take-1-char! stream \\)]
+     (when (parse-newline! stream)
+       [spaces backspace]))))
 
 (defn append-next! [inline-text stream]
   (if inline-text

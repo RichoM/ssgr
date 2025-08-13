@@ -201,4 +201,13 @@
   ; Time per call: 796,30 ms   Alloc per call: 254.175.497b   Iterations: 38
   ; Time per call: 689,66 ms   Alloc per call: 254.058.073b   Iterations: 45
   ; Time per call: 676,88 ms   Alloc per call: 254.052.411b   Iterations: 45
+  ; Time per call: 708,28 ms   Alloc per call: 257.838.506b   Iterations: 43
+  ; Time per call: 631,97 ms   Alloc per call: 257.706.644b   Iterations: 49
+
+  ; After removing petitparser from parse-line-breaks!
+  ; Time per call: 507,74 ms   Alloc per call: 146.756.605b   Iterations: 61
+  ; Time per call: 608,95 ms   Alloc per call: 146.761.263b   Iterations: 55
+  ; Time per call: 517,32 ms   Alloc per call: 146.745.054b   Iterations: 61
+  ; Time per call: 490,19 ms   Alloc per call: 146.748.615b   Iterations: 66
+
   )
