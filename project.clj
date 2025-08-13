@@ -22,7 +22,8 @@
                    :plugins [[com.jakemccrary/lein-test-refresh "0.24.1"]]
                    :global-vars {*unchecked-math* :warn-on-boxed
                                  *warn-on-reflection* true}
-                   :jvm-opts ["-Djdk.attach.allowAttachSelf"
+                   :jvm-opts [; These JVM opts are required by clj-async-profiler
+                              "-Djdk.attach.allowAttachSelf"
                               "-XX:+UnlockDiagnosticVMOptions"
                               "-XX:+DebugNonSafepoints"]}
              :uberjar {:aot [ssgr.core]
