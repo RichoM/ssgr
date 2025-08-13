@@ -26,17 +26,11 @@
     (when (r/success? result)
       (r/actual-result result))))
 
-(defn discard! [parser stream]
-  (when parser
-    (pp/parse-on parser stream)
-    nil))
-
 (defn peek-parser [parser stream]
   (let [begin-pos (in/position stream)
-        result (pp/parse-on parser stream)]
+        result (parser stream)]
     (in/reset-position! stream begin-pos)
-    (when (r/success? result)
-      (r/actual-result result))))
+    result))
 
 (defn take-while! [stream predicate]
   (loop [result (transient [])]
@@ -287,10 +281,30 @@
            (parse-newline! stream)
            {:type ::paragraph})))))
 
-(defn next-line! [stream {:keys [line-prefix line-parser-cache]}]
+(defn discard-line-prefix! [stream {:keys [line-prefix]}]
+  (let [begin-pos (in/position stream)
+        result (line-prefix stream)]
+    (when-not result
+      (in/reset-position! stream begin-pos))
+    result))
+
+(defn parse-line-prefix! [stream {:keys [line-prefix]}]
+  (let [begin-pos (in/position stream)
+        result (line-prefix stream)]
+    (when-not result
+      (in/reset-position! stream begin-pos))
+    result))
+
+(defn peek-line-prefix [stream {:keys [line-prefix]}]
+  (let [begin-pos (in/position stream)
+        result (line-prefix stream)]
+    (in/reset-position! stream begin-pos)
+    result))
+
+(defn next-line! [stream {:keys [line-parser-cache] :as ctx}]
   ; If we have a line-prefix parser, we use it to consume the stream, the result
   ; doesn't matter, we just discard it (I don't know if this is correct, though)
-  (discard! line-prefix stream)
+  (discard-line-prefix! stream ctx)
   ; Before actually trying to parse we look in the cache, if we find a hit we reset
   ; the stream to the cached final position and return the cached result
   (let [begin-pos (in/position stream)
@@ -782,8 +796,8 @@
                     (let [next-line-type (:type (peek-line stream ctx))]
                       (if (or (= ::paragraph next-line-type)
                               (and (= ::indented-code-block next-line-type)
-                                   (some? (peek-parser (:line-prefix ctx) stream))))
-                        (do (discard! (:line-prefix ctx) stream) ; Discard any line prefix
+                                   (peek-line-prefix stream ctx)))
+                        (do (discard-line-prefix! stream ctx) ; Discard any line prefix
                             (take-chars! stream \space \tab)  ; Discard any leading spaces
                             (recur inlines nil))
                         (process-emphasis inlines)))
@@ -825,7 +839,7 @@
                          (make-token lines)))]
     (loop [lines (transient [])]
       (if (and (> (count lines) 0)
-               (nil? (peek-parser (:line-prefix ctx) stream)))
+               (not (peek-line-prefix stream ctx)))
         (make-paragraph (persistent! lines))
         (let [{:keys [type] :as next-line} (peek-line stream ctx)]
           (case type
@@ -932,14 +946,14 @@
   (and (= (:type m1) (:type m2))
        (= (:char m1) (:char m2))))
 
-(defn parse-list-item-blocks! [stream {:keys [line-prefix] :as ctx}]
+(defn parse-list-item-blocks! [stream ctx]
   (let [[next-blocks last-valid-pos]
         (loop [blocks (transient [])
                last-valid-pos (in/position stream)]
           (let [begin-pos (in/position stream)
                 first-block? (= (count blocks) 0)]
             (if (or first-block?
-                    (and (r/success? (pp/parse-on line-prefix stream))
+                    (and (parse-line-prefix! stream ctx)
                          (not (in/end? stream))))
               (recur (conj! blocks (parse-block! stream ctx))
                      begin-pos)
@@ -957,15 +971,19 @@
 
 (defn parse-list! [stream ctx {:keys [^long spaces marker]}]
   (let [begin-list-pos (in/position stream)
-        new-ctx (update ctx :line-prefix pp/seq
-                        (pp/times space (+ spaces
-                                           (count (:digits marker)) 1)))
+        new-ctx (update ctx :line-prefix
+                        (fn [line-prefix]
+                          (fn [stream]
+                            (and (line-prefix stream)
+                                 (let [expected-spaces (+ spaces (count (:digits marker)) 1)]
+                                   (= (count-spaces! stream expected-spaces)
+                                      expected-spaces))))))
         [items last-valid-pos]
         (loop [items (transient [])
                last-valid-pos begin-list-pos]
           (let [begin-item-pos (in/position stream)]
             (if (or (= 0 (count items))
-                    (some? (parse! (:line-prefix ctx) stream)))
+                    (parse-line-prefix! stream ctx))
               (let [next-line (next-line! stream ctx)]
                 (if (= ::blank (:type next-line))
                   (recur (conj! items (do (in/reset-position! stream begin-item-pos)
@@ -996,14 +1014,22 @@
 (defn parse-blockquote! [stream ctx]
   (let [begin-pos (in/position stream)
         _marker (next-line! stream ctx) ; Discard marker
-        marker-parser (pp/seq (:line-prefix ctx) blockquote)
-        new-ctx (update ctx :line-prefix pp/seq (pp/optional blockquote))
+        marker-parser (let [line-prefix (:line-prefix ctx)]
+                        (fn [stream]
+                          (and (line-prefix stream)
+                               (some? (parse-blockquote-marker! stream)))))
+        new-ctx (update ctx :line-prefix
+                        (fn [line-prefix]
+                          (fn [stream]
+                            (and (line-prefix stream)
+                                 (do (parse-blockquote-marker! stream)
+                                     true)))))
         blocks (loop [blocks (transient [])]
                  (if-not (in/end? stream)
                    ; If the next block begins with a blockquote marker, no matter what we parse
                    ; we continue parsing the blockquote. If the next block is not prefixed with
                    ; a blockquote marker then we stop at blank lines.
-                   (if-let [marker (peek-parser marker-parser stream)]
+                   (if (peek-parser marker-parser stream)
                      (let [next-block (parse-block! stream new-ctx)]
                        (if (= ::blank next-block) ; Ignore blank lines and continue
                          (recur blocks)
@@ -1042,7 +1068,7 @@
       (persistent! blocks))))
 
 (defn make-context [eval-form]
-  {:line-prefix (pp/seq)
+  {:line-prefix (constantly true)
    :eval-form eval-form
    :line-parser-cache (volatile! {})})
 
