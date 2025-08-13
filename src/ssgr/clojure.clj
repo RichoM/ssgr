@@ -1,6 +1,6 @@
 (ns ssgr.clojure
   (:require [clojure.string :as str]
-            [petitparser.input-stream :as in]
+            [ssgr.input-stream :as in]
             [ssgr.token :as t :refer [*parser-file*]]
             [edamame.core :as e]
             [hiccup.compiler :as h.c]

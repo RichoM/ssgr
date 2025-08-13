@@ -1,6 +1,6 @@
 (ns ssgr.parser
   (:require [clojure.string :as str]
-            [petitparser.input-stream :as in]
+            [ssgr.input-stream :as in]
             [ssgr.clojure :as c :refer [*verbose-eval*]]
             [ssgr.token :as t :refer [*debug-verbose-tokens* *parser-file*]]
             [ssgr.doc :as doc]))

@@ -1,6 +1,6 @@
 (ns ssgr.parser-test
   (:require [clojure.test :refer [deftest is]]
-            [petitparser.input-stream :as in]
+            [ssgr.input-stream :as in]
             [ssgr.eval :as e]
             [ssgr.parser :as p]
             [ssgr.doc :as d]
