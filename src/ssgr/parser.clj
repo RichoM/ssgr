@@ -74,70 +74,65 @@
 (defn parse-list-item-marker! [stream]
   (try-parse
    stream
-   (let [_leading-spaces (in/count-max! stream space? 3)
-         marker (or (parse-bullet-list-marker! stream)
+   (let [marker (or (parse-bullet-list-marker! stream)
                     (parse-ordered-list-marker! stream))]
      (when marker
-       (let [trailing-spaces (in/count-max! stream space? 4)]
-         (when (>= trailing-spaces 1)
+       (let [spaces (in/count-max! stream space? 4)]
+         (when (>= spaces 1)
            {:type ::list-item
-            :spaces trailing-spaces
+            :spaces spaces
             :marker marker}))))))
 
 (defn parse-blockquote-marker! [stream]
   (try-parse
    stream
-   (do (in/count-max! stream space? 3)
-       (when (= \> (in/next! stream))
-         (when (= \space (in/peek stream))
-           (in/next! stream))
-         {:type ::blockquote}))))
+   (when (= \> (in/next! stream))
+     (when (= \space (in/peek stream))
+       (in/next! stream))
+     {:type ::blockquote})))
 
 (defn *parse-thematic-break! [stream]
   (try-parse
    stream
-   (do (in/count-max! stream space? 3)
-       (let [next-char (in/peek stream)]
-         (when (#{\- \_ \*} next-char)
-           (let [chars (in/take-chars! stream next-char)]
-             (when (>= (count chars) 3)
-               (in/take-while! stream space?)
-               (when (parse-newline-or-end! stream)
-                 {:type ::thematic-break
-                  :chars chars}))))))))
+   (let [next-char (in/peek stream)]
+     (when (#{\- \_ \*} next-char)
+       (let [chars (in/take-chars! stream next-char)]
+         (when (>= (count chars) 3)
+           (in/take-while! stream space?)
+           (when (parse-newline-or-end! stream)
+             {:type ::thematic-break
+              :chars chars})))))))
 
 (defn *parse-atx-heading! [stream]
   (try-parse
    stream
-   (do (in/count-max! stream space? 3) ; Discard leading spaces
-       (let [level (in/count-max! stream #{\#} 6)
-             content-start (in/position stream)]
-         (when (>= level 1)
-           (let [content (in/take-until! stream newline-char?)]
-             (parse-newline! stream) ; Discard newline
-             (when (or (empty? content)
-                       (= \space (first content)))
-               {:type ::atx-heading
-                :level level
-                :content-start content-start})))))))
+   (let [level (in/count-max! stream #{\#} 6)
+         content-start (in/position stream)]
+     (when (>= level 1)
+       (let [content (in/take-until! stream newline-char?)]
+         (parse-newline! stream) ; Discard newline
+         (when (or (empty? content)
+                   (= \space (first content)))
+           {:type ::atx-heading
+            :level level
+            :content-start content-start}))))))
 
 (defn parse-setext-heading-underline! [stream]
   (try-parse
    stream
-   (do (in/count-max! stream space? 3) ; Discard leading spaces
-       (let [next-char (in/peek stream)]
-         (when (#{\- \=} next-char)
-           (let [chars (in/take-chars! stream next-char)]
-             (in/count-while! stream space?) ; Discard trailing spaces
-             (when (parse-newline-or-end! stream)
-               {:type ::setext-heading-underline
-                :chars chars})))))))
+   (let [next-char (in/peek stream)]
+     (when (#{\- \=} next-char)
+       (let [chars (in/take-chars! stream next-char)]
+         (in/count-while! stream space?) ; Discard trailing spaces
+         (when (parse-newline-or-end! stream)
+           {:type ::setext-heading-underline
+            :chars chars}))))))
 
-(defn *parse-indented-code-block! [stream]
+(defn *parse-indented-code-block! [stream spaces-before]
   (try-parse
    stream
    (let [spaces (in/count-while! stream space?)]
-     (when (>= spaces 4)
+     (when (>= spaces (- 4 spaces-before))
        (let [content (in/take-until! stream newline-char?)]
          (when (seq content)
            (parse-newline! stream)
@@ -146,17 +141,16 @@
 (defn parse-code-fence! [stream]
   (try-parse
    stream
-   (do (in/count-max! stream space? 3) ; Discard leading spaces
-       (let [chars (in/count-while! stream code-fence-char?)]
-         (when (>= chars 3)
-           (let [info-string-begin (in/position stream)
-                 info-string-count (in/count-until! stream newline-char?)
-                 info-string (if (zero? info-string-count)
-                               ""
-                               (in/substream stream info-string-begin))]
-             (parse-newline! stream) ; Discard newline
-             {:type ::code-fence
-              :info-string info-string}))))))
+   (let [chars (in/count-while! stream code-fence-char?)]
+     (when (>= chars 3)
+       (let [info-string-begin (in/position stream)
+             info-string-count (in/count-until! stream newline-char?)
+             info-string (if (zero? info-string-count)
+                           ""
+                           (in/substream stream info-string-begin))]
+         (parse-newline! stream) ; Discard newline
+         {:type ::code-fence
+          :info-string info-string})))))
 
 (defn parse-blank! [stream]
   (try-parse
@@ -168,12 +162,11 @@
 (defn *parse-paragraph! [stream]
   (try-parse
    stream
-   (do (in/count-max! stream space? 3) ; Discard leading spaces
-       (when-not (in/end? stream)
-         (when-not (space? (in/peek stream))
-           (in/count-until! stream newline-char?)
-           (parse-newline! stream)
-           {:type ::paragraph})))))
+   (when-not (in/end? stream)
+     (when-not (space? (in/peek stream))
+       (in/count-until! stream newline-char?)
+       (parse-newline! stream)
+       {:type ::paragraph}))))
 
 (defn parse-line-prefix! [stream {:keys [line-prefix]}]
   (let [begin-pos (in/position stream)
@@ -197,13 +190,16 @@
     (if (not= cached-result ::not-found)
       (do (in/reset-position! stream cached-pos)
           cached-result)
-      (let [; We try each line parser in order until we find one that matches
+      (let [; First, we discard up to 3 leading spaces (we need to count how many we
+            ; discarded for the indented-code-block case) 
+            spaces (in/count-max! stream space? 3)
+            ; We try each line parser in order until we find one that matches
             final-result (or (parse-blockquote-marker! stream)
                              (parse-list-item-marker! stream)
                              (*parse-thematic-break! stream)
                              (*parse-atx-heading! stream)
                              (parse-setext-heading-underline! stream)
-                             (*parse-indented-code-block! stream)
+                             (*parse-indented-code-block! stream spaces)
                              (parse-code-fence! stream)
                              (parse-blank! stream)
                              (*parse-paragraph! stream))
