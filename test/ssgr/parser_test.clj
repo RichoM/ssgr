@@ -9,7 +9,7 @@
 
 (deftest blank-line
   (let [blank? #(= {:type :ssgr.parser/blank}
-                   (p/parse-blank! (in/make-stream %)))]
+                   (p/parse-blank-line! (in/make-stream %)))]
     (is (blank? "\n"))
     (is (blank? "\t\n"))
     (is (blank? "   \n"))

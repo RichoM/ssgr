@@ -91,7 +91,7 @@
        (in/next! stream))
      {:type ::blockquote})))
 
-(defn *parse-thematic-break! [stream]
+(defn parse-thematic-break-line! [stream]
   (try-parse
    stream
    (let [next-char (in/peek stream)]
@@ -103,7 +103,7 @@
              {:type ::thematic-break
               :chars chars})))))))
 
-(defn *parse-atx-heading! [stream]
+(defn parse-atx-heading-line! [stream]
   (try-parse
    stream
    (let [level (in/count-max! stream #{\#} 6)
@@ -128,7 +128,7 @@
            {:type ::setext-heading-underline
             :chars chars}))))))
 
-(defn *parse-indented-code-block! [stream spaces-before]
+(defn parse-indented-code-block-line! [stream spaces-before]
   (try-parse
    stream
    (let [spaces (in/count-while! stream space?)]
@@ -138,7 +138,7 @@
            (parse-newline! stream)
            {:type ::indented-code-block}))))))
 
-(defn parse-code-fence! [stream]
+(defn parse-code-fence-line! [stream]
   (try-parse
    stream
    (let [chars (in/count-while! stream code-fence-char?)]
@@ -152,14 +152,14 @@
          {:type ::code-fence
           :info-string info-string})))))
 
-(defn parse-blank! [stream]
+(defn parse-blank-line! [stream]
   (try-parse
    stream
    (do (in/count-while! stream space?) ; Discard all spaces
        (when (parse-newline! stream)         
          {:type ::blank}))))
 
-(defn *parse-paragraph! [stream]
+(defn parse-paragraph-line! [stream]
   (try-parse
    stream
    (when-not (in/end? stream)
@@ -196,13 +196,13 @@
             ; We try each line parser in order until we find one that matches
             final-result (or (parse-blockquote-marker! stream)
                              (parse-list-item-marker! stream)
-                             (*parse-thematic-break! stream)
-                             (*parse-atx-heading! stream)
+                             (parse-thematic-break-line! stream)
+                             (parse-atx-heading-line! stream)
                              (parse-setext-heading-underline! stream)
-                             (*parse-indented-code-block! stream spaces)
-                             (parse-code-fence! stream)
-                             (parse-blank! stream)
-                             (*parse-paragraph! stream))
+                             (parse-indented-code-block-line! stream spaces)
+                             (parse-code-fence-line! stream)
+                             (parse-blank-line! stream)
+                             (parse-paragraph-line! stream))
             final-pos (in/position stream)]
         (vswap! line-parser-cache assoc begin-pos [final-result final-pos])
         final-result))))
