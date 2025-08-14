@@ -80,7 +80,6 @@
      (when marker
        (let [trailing-spaces (in/count-max! stream space? 4)]
          (when (>= trailing-spaces 1)
-           ; TODO(Richo): Should I add a token here??? Probably not
            {:type ::list-item
             :spaces trailing-spaces
             :marker marker}))))))
