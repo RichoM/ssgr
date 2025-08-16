@@ -10,6 +10,7 @@
                  [org.clojure/tools.cli "1.1.230"]]
   :main ssgr.core
   :target-path "target/%s"
+  :java-source-paths ["src"]
   :profiles {:dev {:dependencies [[org.clojure/core.async "0.6.532"]
                                   [org.clojars.beppu/clj-audio "0.3.0"]
                                   [criterium "0.4.6"]
