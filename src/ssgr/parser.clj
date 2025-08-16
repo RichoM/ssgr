@@ -128,7 +128,7 @@
            {:type ::setext-heading-underline
             :chars chars}))))))
 
-(defn parse-indented-code-block-line! [stream spaces-before]
+(defn parse-indented-code-block-line! [stream ^long spaces-before]
   (try-parse
    stream
    (let [spaces (in/count-while! stream space?)]
@@ -364,7 +364,7 @@
         (assoc :stop (in/position stream)))
     {:stream stream
      :start (in/position stream)
-     :stop (inc (in/position stream))
+     :stop (inc ^long (in/position stream))
      :text (str (in/next! stream))}))
 
 (defn append-text [inline-text stream chars ^long stop]
@@ -408,7 +408,7 @@
            (unicode-punctuation-character? next-char))))
 
 (defn parse-emph-delimiter! [stream char]
-  (let [prev-char (or (in/peek-at stream (dec (in/position stream))) \space)
+  (let [prev-char (or (in/peek-at stream (dec ^long (in/position stream))) \space)
         chars (in/take-chars! stream char)
         next-char (or (in/peek stream) \space)]
     {:type ::delimiter
@@ -656,7 +656,7 @@
       (recur (condj inlines (close-text inline-text))
              (append-next! nil stream))
 
-      :else (let [begin-pos (in/position stream)]
+      :else (let [^long begin-pos (in/position stream)]
               (if-let [[spaces backslash] (parse-line-breaks! stream)]
                 (let [token (t/stream->token stream begin-pos [spaces backslash])
                       inlines (if backslash

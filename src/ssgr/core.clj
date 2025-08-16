@@ -222,4 +222,9 @@
   ; Time per call: 516,06 ms   Alloc per call: 145.756.805b   Iterations: 61
   ; Time per call: 507,82 ms   Alloc per call: 145.743.720b   Iterations: 61
   ; Time per call: 506,00 ms   Alloc per call: 145.728.546b   Iterations: 61
+
+  ; After replacing input-stream for deftype StringStream
+  ; Time per call: 551,52 ms   Alloc per call: 139.474.826b   Iterations: 61
+  ; Time per call: 501,07 ms   Alloc per call: 139.465.003b   Iterations: 64
+  ; Time per call: 508,33 ms   Alloc per call: 139.459.286b   Iterations: 61
   )

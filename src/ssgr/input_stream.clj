@@ -1,28 +1,41 @@
 (ns ssgr.input-stream
   (:refer-clojure :exclude [peek]))
 
+(defprotocol Stream
+  (source [stream])
+  (position [stream])
+  (end? [stream])
+  (peek [stream])
+  (next! [stream])
+  (reset-position! [stream new-pos]))
+
+(deftype StringStream [src ^:unsynchronized-mutable pos]
+  Stream
+  (source ^String [stream] (.src stream))
+  (position ^long [stream] (.pos stream))
+  (end? [stream] 
+    (>= ^long (.pos stream) 
+        (.length ^String (.src stream))))
+  (peek [stream]
+    (let [^String src (.src stream)
+          ^long pos (.pos stream)]
+      (when (< pos (.length src))
+        (char (.charAt src pos)))))
+  (next! [stream]
+    (when-let [val (peek stream)]
+      (set! pos (inc ^long (.pos stream)))
+      val))
+  (reset-position! [_ new-pos]
+    (set! pos ^long new-pos)
+    nil))
+
 (defn make-stream [src]
-  {:src src :pos (volatile! 0)})
+  (StringStream. src 0))
 
-(defn position ^long [{pos :pos}] @pos)
-(defn source [stream] (:src stream))
-
-(defn reset-position! [stream pos]
-  (vreset! (:pos stream) pos)
-  nil)
-
-(defn peek [{:keys [src pos]}]
-  (nth src @pos nil))
-
-(defn next! [stream]
-  (when-let [val (peek stream)]
-    (vreset! (:pos stream) (inc (position stream)))
-    val))
-
-(defn end? [stream]
+#_(defn end? [stream]
   (nil? (peek stream)))
 
-(defn take! [stream ^long length]
+#_(defn take! [stream ^long length]
   (let [start (position stream)
         end (min (count (:src stream))
                  (+ length start))]
@@ -84,11 +97,11 @@
 
 (defn peek-offset [stream ^long offset]
   (nth (source stream)
-       (+ (position stream) offset)
+       (+ ^long (position stream) offset)
        nil))
 
 (defn substream
   ([stream start]
    (substream stream start (position stream)))
   ([stream start end]
-   (subs (:src stream) start end)))
+   (subs (source stream) start end)))

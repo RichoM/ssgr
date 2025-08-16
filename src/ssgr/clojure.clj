@@ -28,7 +28,7 @@
   (let [^long line-number (e/get-line-number reader)
         ^long column-number (e/get-column-number reader)
         line-position (find-line-idx source line-number)
-        position (+ (in/position stream)
+        position (+ ^long (in/position stream)
                     line-position
                     (dec column-number))]
     (in/reset-position! stream position)))
