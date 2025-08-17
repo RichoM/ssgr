@@ -26,35 +26,36 @@
       (in/next! stream)
       (recur))))
 
-(defn tokenize! [src]
+(defn tokenize [src]
   (let [stream (in/make-stream src)]
     (loop [tokens (transient [])
            pos (in/position stream)]
       (if-let [next-char (in/next! stream)]
-        (let [token (cond
-                      (letter? next-char)
-                      (do (skip-letters! stream)
-                          (make-token src ::word next-char 
-                                      pos 
-                                      (- ^long (in/position stream) 
-                                         ^long pos)))
+        (let [token
+              (cond
+                (letter? next-char)
+                (do (skip-letters! stream)
+                    (make-token src ::word next-char
+                                pos
+                                (- ^long (in/position stream)
+                                   ^long pos)))
 
-                      (space? next-char)
-                      (make-token src ::space next-char pos)
+                (space? next-char)
+                (make-token src ::space next-char pos)
 
-                      (digit? next-char)
-                      (make-token src ::digit next-char pos)
-                      
-                      (newline-char? next-char)
-                      (if (= \return next-char)
-                        (if (= \newline next-char)
-                          (do (in/next! stream)
-                              (make-token src ::newline next-char pos 2))
-                          (make-token src ::newline next-char pos))
-                        (make-token src ::newline next-char pos))
-                      
-                      :else
-                      (make-token src ::symbol next-char pos))]
+                (digit? next-char)
+                (make-token src ::digit next-char pos)
+
+                (newline-char? next-char)
+                (if (= \return next-char)
+                  (if (= \newline next-char)
+                    (do (in/next! stream)
+                        (make-token src ::newline next-char pos 2))
+                    (make-token src ::newline next-char pos))
+                  (make-token src ::newline next-char pos))
+
+                :else
+                (make-token src ::symbol next-char pos))]
           (recur (conj! tokens token)
                  (in/position stream)))
         (persistent! tokens)))))
@@ -62,43 +63,37 @@
 (comment
   (require 'user)
 
-  
-  (nth "abc" 0)
-  (get "abc" 10 nil)
 
   (def src (slurp "test-files/intro.cljmd"))
   (def src (slurp "test-files/03/02_UsoDeConsola.md"))
   (count src)
-  (count (tokenize! src))
+  (def token-stream (in/make-stream (tokenize src)))
+
+  (in/next! token-stream)
+  (in/reset-position! token-stream 0)
+  (in/take-while! token-stream (comp #{\# \space} :char))
+  (in/position token-stream)
   
   (user/time+
-   (tokenize! src))
+   (tokenize src))
 
-  (user/time+
-   (dotimes [_ 100]
-     (test-input-stream src)))
+  
+  ; digit? 0-9
+  ; space? \space \tab
+  ; code-fence-char? \` \~
+  ; newline-char? \return \newline
+  ; bullet-list-marker? \- \+ \*
+  ; ordered-list-separator? \. \)
+  ; blockquote-marker? \>
+  ; thematic-break? \- \_ \*
+  ; atx-heading? \#
+  ; setext-underline? \- \=
+  ; 
+  ; 
+  ; word
+  ; digit
+  ; space
+  ; symbol
+  ; newline
 
-  (user/time+
-   (dotimes [_ 100]
-     (test-string-reader src)))
-
-  (user/time+
-   (dotimes [_ 100]
-     (test-input-stream2 src)))
-
-  (user/time+
-   (dotimes [_ 100]
-     (test-string-stream src)))
-
-  (= (test-input-stream3 src)
-     (test-string-reader src))
-  (def reader (InputStream. src))
-
-  (char (.read reader))
-  (.-next reader)
-  (.skip reader 2)
-
-  (.reset reader)
-  (.mark reader 1)
-  (char 97)
   )

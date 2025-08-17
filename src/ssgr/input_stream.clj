@@ -7,14 +7,15 @@
   (end? [stream])
   (peek [stream])
   (next! [stream])
-  (reset-position! [stream new-pos]))
+  (reset-position! [stream new-pos])
+  (substream [stream start][stream start end]))
 
 (deftype StringStream [src ^:unsynchronized-mutable pos]
   Stream
   (source ^String [stream] (.src stream))
   (position ^long [stream] (.pos stream))
-  (end? [stream] 
-    (>= ^long (.pos stream) 
+  (end? [stream]
+    (>= ^long (.pos stream)
         (.length ^String (.src stream))))
   (peek [stream]
     (let [^String src (.src stream)
@@ -27,21 +28,39 @@
       val))
   (reset-position! [_ new-pos]
     (set! pos ^long new-pos)
-    nil))
+    nil)
+  (substream [stream start]
+    (substream stream start (position stream)))
+  (substream [stream start end]
+    (subs (source stream) start end)))
+
+(deftype TokenStream [src ^:unsynchronized-mutable pos]
+  Stream
+  (source [stream] (.src stream))
+  (position ^long [stream] (.pos stream))
+  (end? [stream]
+    (>= ^long (.pos stream)
+        (count (.src stream))))
+  (peek [stream]
+    (nth (.src stream)
+         (.pos stream)
+         nil))
+  (next! [stream]
+    (when-let [val (peek stream)]
+      (set! pos (inc ^long (.pos stream)))
+      val))
+  (reset-position! [_ new-pos]
+    (set! pos ^long new-pos)
+    nil)
+  (substream [stream start]
+    (substream stream start (position stream)))
+  (substream [stream start end]
+    (subvec (source stream) start end)))
 
 (defn make-stream [src]
-  (StringStream. src 0))
-
-#_(defn end? [stream]
-  (nil? (peek stream)))
-
-#_(defn take! [stream ^long length]
-  (let [start (position stream)
-        end (min (count (:src stream))
-                 (+ length start))]
-    (reset-position! stream end)
-    (subs (:src stream) start end)))
-
+  (if (string? src)
+    (StringStream. src 0)
+    (TokenStream. src 0)))
 
 (defn take-while! [stream predicate]
   (loop [result (transient [])]
@@ -56,9 +75,9 @@
 (defn take-chars! [stream & chars]
   (take-while! stream (set chars)))
 
-(defn take-1-char! [stream char]
+(defn take-1! [stream predicate]
   (let [next (peek stream)]
-    (when (= char next)
+    (when (and next (predicate next))
       (next! stream))))
 
 (defn take-max! [stream predicate ^long limit]
@@ -99,9 +118,3 @@
   (nth (source stream)
        (+ ^long (position stream) offset)
        nil))
-
-(defn substream
-  ([stream start]
-   (substream stream start (position stream)))
-  ([stream start end]
-   (subs (source stream) start end)))

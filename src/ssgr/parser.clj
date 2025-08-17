@@ -1,6 +1,7 @@
 (ns ssgr.parser
   (:require [clojure.string :as str]
             [ssgr.input-stream :as in]
+            [ssgr.lexer :as lexer]
             [ssgr.clojure :as c :refer [*verbose-eval*]]
             [ssgr.token :as t :refer [*debug-verbose-tokens* *parser-file*]]
             [ssgr.doc :as doc]))
@@ -25,25 +26,30 @@
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Line parsers
 
-(defn digit? [chr]
-  (and chr (Character/isDigit ^char chr)))
+(defn digit? [lex-token]
+  (= ::lexer/digit (:type lex-token)))
 
-(def space? #{\space \tab})
+(defn space? [lex-token]
+  (= ::lexer/space (:type lex-token)))
+
+(defn symbol? [lex-token]
+  (= ::lexer/symbol (:type lex-token)))
+
+(defn newline? [lex-token]
+  (= ::lexer/newline (:type lex-token)))
+
+(defn word? [lex-token]
+  (= ::lexer/word (:type lex-token)))
 
 (def code-fence-char? #{\` \~})
 
 (def newline-char? #{\return \newline})
 
 (defn parse-newline! [stream]
-  (case (in/peek stream)
-    \return (do (in/next! stream)
-                (if (= \newline (in/peek stream))
-                  (do (in/next! stream)
-                      "\r\n")
-                  \return))
-    \newline (do (in/next! stream)
-                 \newline)
-    nil))
+  (let [token (in/peek stream)]
+    (when (newline? token)
+      (in/next! stream)
+      token)))
 
 (defn parse-newline-or-end! [stream]
   (try-parse
@@ -53,22 +59,26 @@
      (parse-newline! stream))))
 
 (defn parse-bullet-list-marker! [stream]
-  (let [next (in/peek stream)]
+  (when-let [next (:char (in/peek stream))]
     (when (#{\- \+ \*} next)
+      (in/next! stream)
       {:type ::bullet-list-marker
        :digits ""
-       :char (in/next! stream)})))
+       :char next})))
 
 (defn parse-ordered-list-marker! [stream]
   (let [begin-pos (in/position stream)
         digit-count (in/count-max! stream digit? 9)]
     (if (>= digit-count 1)
-      (let [digits (in/substream stream begin-pos)
-            ^char next (in/peek stream)]
-        (when (#{\. \)} next)
+      (let [digits (->> (in/substream stream begin-pos)
+                        (mapv :char)
+                        (str/join))
+            next-char (:char (in/peek stream))]
+        (when (#{\. \)} next-char)
+          (in/next! stream)
           {:type ::ordered-list-marker
            :digits digits
-           :char (in/next! stream)}))
+           :char next-char}))
       (in/reset-position! stream begin-pos))))
 
 (defn parse-list-item-marker! [stream]
@@ -86,33 +96,33 @@
 (defn parse-blockquote-marker! [stream]
   (try-parse
    stream
-   (when (= \> (in/next! stream))
-     (when (= \space (in/peek stream))
+   (when (= \> (:char (in/next! stream)))
+     (when (= \space (:char (in/peek stream)))
        (in/next! stream))
      {:type ::blockquote})))
 
 (defn parse-thematic-break-line! [stream]
   (try-parse
    stream
-   (let [next-char (in/peek stream)]
+   (let [next-char (:char (in/peek stream))]
      (when (#{\- \_ \*} next-char)
-       (let [chars (in/take-chars! stream next-char)]
+       (let [chars (in/take-while! stream (fn [t] (= next-char (:char t))))]
          (when (>= (count chars) 3)
-           (in/take-while! stream space?)
+           (in/count-while! stream space?)
            (when (parse-newline-or-end! stream)
              {:type ::thematic-break
-              :chars chars})))))))
+              :chars (mapv :char chars)})))))))
 
 (defn parse-atx-heading-line! [stream]
   (try-parse
    stream
-   (let [level (in/count-max! stream #{\#} 6)
+   (let [level (in/count-max! stream (comp #{\#} :char) 6)
          content-start (in/position stream)]
      (when (>= level 1)
-       (let [content (in/take-until! stream newline-char?)]
+       (let [content (in/take-until! stream newline?)]
          (parse-newline! stream) ; Discard newline
          (when (or (empty? content)
-                   (= \space (first content)))
+                   (= \space (:char (first content))))
            {:type ::atx-heading
             :level level
             :content-start content-start}))))))
@@ -120,20 +130,20 @@
 (defn parse-setext-heading-underline! [stream]
   (try-parse
    stream
-   (let [next-char (in/peek stream)]
+   (let [next-char (:char (in/peek stream))]
      (when (#{\- \=} next-char)
-       (let [chars (in/take-chars! stream next-char)]
+       (let [chars (in/take-while! stream (fn [t] (= next-char (:char t))))]
          (in/count-while! stream space?) ; Discard trailing spaces
          (when (parse-newline-or-end! stream)
            {:type ::setext-heading-underline
-            :chars chars}))))))
+            :chars (mapv :char chars)}))))))
 
 (defn parse-indented-code-block-line! [stream ^long spaces-before]
   (try-parse
    stream
    (let [spaces (in/count-while! stream space?)]
      (when (>= spaces (- 4 spaces-before))
-       (let [content (in/take-until! stream newline-char?)]
+       (let [content (in/take-until! stream newline?)]
          (when (seq content)
            (parse-newline! stream)
            {:type ::indented-code-block}))))))
@@ -141,13 +151,15 @@
 (defn parse-code-fence-line! [stream]
   (try-parse
    stream
-   (let [chars (in/count-while! stream code-fence-char?)]
+   (let [chars (in/count-while! stream (comp code-fence-char? :char))]
      (when (>= chars 3)
        (let [info-string-begin (in/position stream)
-             info-string-count (in/count-until! stream newline-char?)
+             info-string-count (in/count-until! stream newline?)
              info-string (if (zero? info-string-count)
                            ""
-                           (in/substream stream info-string-begin))]
+                           (->> (in/substream stream info-string-begin)
+                                (mapv :char)
+                                (str/join)))]
          (parse-newline! stream) ; Discard newline
          {:type ::code-fence
           :info-string info-string})))))
@@ -164,7 +176,7 @@
    stream
    (when-not (in/end? stream)
      (when-not (space? (in/peek stream))
-       (in/count-until! stream newline-char?)
+       (in/count-until! stream newline?)
        (parse-newline! stream)
        {:type ::paragraph}))))
 
@@ -240,7 +252,7 @@
 
 (def punctuation-chars (set "!\"#$%&'()*+,-./:;<=>?@[\\]^_`{|}~"))
 
-(defn parse-escaped-characters! [stream]
+(defn parse-escaped-characters! [stream] ;;; TODO(Richo): Continue here!!!!!
   ; If we find any punctuation character preceded by a backslash (\) we return 
   ; them, otherwise we leave the stream untouched and return nil
   (let [begin-pos (in/position stream)]
@@ -276,7 +288,7 @@
                                (in/take-chars! stream \space \tab)
                                (recur (conj! content \space))))
                 \return (do (in/next! stream) ; Discard newline
-                            (in/take-1-char! stream \newline) ; Discard newline (if any)
+                            (in/take-1! stream #{\newline}) ; Discard newline (if any)
                             (when (contains? #{::paragraph ::indented-code-block}
                                              (:type (peek-line stream ctx)))
                               ; Discard leading spaces
@@ -353,7 +365,7 @@
   (try-parse
    stream
    (let [spaces (in/take-chars! stream \space)
-         backspace (in/take-1-char! stream \\)]
+         backspace (in/take-1! stream #{\\})]
      (when (parse-newline! stream)
        [spaces backspace]))))
 
@@ -959,7 +971,7 @@
    (binding [*debug-verbose-emphasis* (:debug options)
              *debug-verbose-tokens* (:debug options)
              *verbose-eval* (:verbose options)]
-     (let [stream (in/make-stream src)
+     (let [stream (in/make-stream (lexer/tokenize src))
            ctx (make-context eval-form)
            blocks (parse-blocks! stream ctx)]
        (t/with-token (apply doc/document blocks)
