@@ -227,4 +227,10 @@
   ; Time per call: 551,52 ms   Alloc per call: 139.474.826b   Iterations: 61
   ; Time per call: 501,07 ms   Alloc per call: 139.465.003b   Iterations: 64
   ; Time per call: 508,33 ms   Alloc per call: 139.459.286b   Iterations: 61
+
+  ; After first iteration with the lexer  
+  ; Time per call: 437,91 ms   Alloc per call: 71.697.405b   Iterations: 71
+  ; Time per call: 443,83 ms   Alloc per call: 71.685.944b   Iterations: 71
+  ; Time per call: 451,56 ms   Alloc per call: 71.681.904b   Iterations: 67
+  ; Time per call: 427,29 ms   Alloc per call: 71.681.319b   Iterations: 73
   )
