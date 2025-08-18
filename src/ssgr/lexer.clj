@@ -10,6 +10,11 @@
   ([src type char start count]
    {:src src :type type :char char :start start :count count}))
 
+(defn input-value [{:keys [src type char ^long start ^long count]}]
+  (if (= ::word type)
+    (subs src start (+ start count))
+    (str char)))
+
 (defn letter? [chr]
   (and chr (Character/isLetter ^char chr)))
 
@@ -48,8 +53,8 @@
 
                 (newline-char? next-char)
                 (if (= \return next-char)
-                  (if (= \newline next-char)
-                    (do (in/next! stream)
+                  (if (= \newline (in/peek stream))
+                    (do (in/next! stream) ; Skip
                         (make-token src ::newline next-char pos 2))
                     (make-token src ::newline next-char pos))
                   (make-token src ::newline next-char pos))
@@ -59,6 +64,14 @@
           (recur (conj! tokens token)
                  (in/position stream)))
         (persistent! tokens)))))
+
+(defn flatten [tokens]
+  (let [first-token (first tokens)
+        last-token (last tokens)]
+    (subs (:src first-token)
+          (:start first-token)
+          (+ ^long (:start last-token)
+             ^long (:count last-token)))))
 
 (comment
   (require 'user)

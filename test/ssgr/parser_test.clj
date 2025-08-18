@@ -1,6 +1,7 @@
 (ns ssgr.parser-test
   (:require [clojure.test :refer [deftest is]]
             [ssgr.input-stream :as in]
+            [ssgr.lexer :as l]
             [ssgr.eval :as e]
             [ssgr.parser :as p]
             [ssgr.doc :as d]
@@ -9,7 +10,7 @@
 
 (deftest blank-line
   (let [blank? #(= {:type :ssgr.parser/blank}
-                   (p/parse-blank-line! (in/make-stream %)))]
+                   (p/parse-blank-line! (in/make-stream (l/tokenize %))))]
     (is (blank? "\n"))
     (is (blank? "\t\n"))
     (is (blank? "   \n"))

@@ -1,4 +1,5 @@
 (ns ssgr.parser
+  (:refer-clojure :exclude [symbol?])
   (:require [clojure.string :as str]
             [ssgr.input-stream :as in]
             [ssgr.lexer :as lexer]
@@ -157,9 +158,7 @@
              info-string-count (in/count-until! stream newline?)
              info-string (if (zero? info-string-count)
                            ""
-                           (->> (in/substream stream info-string-begin)
-                                (mapv :char)
-                                (str/join)))]
+                           (lexer/flatten (in/substream stream info-string-begin)))]
          (parse-newline! stream) ; Discard newline
          {:type ::code-fence
           :info-string info-string})))))
@@ -252,62 +251,60 @@
 
 (def punctuation-chars (set "!\"#$%&'()*+,-./:;<=>?@[\\]^_`{|}~"))
 
-(defn parse-escaped-characters! [stream] ;;; TODO(Richo): Continue here!!!!!
+(defn parse-escaped-characters! [stream]
   ; If we find any punctuation character preceded by a backslash (\) we return 
   ; them, otherwise we leave the stream untouched and return nil
   (let [begin-pos (in/position stream)]
-    (when (= \\ (in/peek stream))
+    (when (= \\ (:char (in/peek stream)))
       (let [result (in/next! stream)]
-        (if (punctuation-chars (in/peek stream))
-          result
+        (if (punctuation-chars (:char (in/peek stream)))
+          (:char result)
           (do (in/reset-position! stream begin-pos)
               nil))))))
 
 (defn parse-code-span! [stream ctx]
-  (when (= \` (in/peek stream))
+  (when (= \` (:char (in/peek stream)))
     (let [begin-pos (in/position stream)
-          opening (in/take-chars! stream \`)
+          opening (in/take-while! stream (fn [t] (= \` (:char t))))
           begin-content (in/position stream)
           [content closing]
-          (loop [content (transient [])]
-            (let [next-char (in/peek stream)]
-              (case next-char
+          (loop [content (transient [])] ; TODO(Richo): Replace with StringBuilder?
+            (let [next-token (in/peek stream)]
+              (cond
                 ; The closing and opening must be of equal length
-                \` (let [closing (in/take-chars! stream \`)]
-                     (if (= (count closing)
-                            (count opening))
-                       [(persistent! content) closing]
-                       (recur (reduce conj! content closing))))
+                (and (symbol? next-token)
+                     (= \` (:char next-token)))
+                (let [closing (in/take-while! stream (fn [t] (= \` (:char t))))]
+                  (if (= (count closing)
+                         (count opening))
+                    [(persistent! content) closing]
+                    (recur (reduce conj! content
+                                   (str/join (mapv :char closing))))))
 
                 ; Line endings are converted to spaces, but only if the next line is either
                 ; a paragraph or an indented-code-block.
-                \newline (do (in/next! stream) ; Discard newline
-                             (when (contains? #{::paragraph ::indented-code-block}
-                                              (:type (peek-line stream ctx)))
-                               ; Discard leading spaces
-                               (in/take-chars! stream \space \tab)
-                               (recur (conj! content \space))))
-                \return (do (in/next! stream) ; Discard newline
-                            (in/take-1! stream #{\newline}) ; Discard newline (if any)
-                            (when (contains? #{::paragraph ::indented-code-block}
-                                             (:type (peek-line stream ctx)))
-                              ; Discard leading spaces
-                              (in/take-chars! stream \space \tab)
-                              (recur (conj! content \space))))
+                (newline? next-token)
+                (do (in/next! stream) ; Discard newline
+                    (when (contains? #{::paragraph ::indented-code-block}
+                                     (:type (peek-line stream ctx)))
+                      ; Discard leading spaces
+                      (in/count-while! stream space?)
+                      (recur (conj! content \space))))
 
                 ; Anything else is appended to the content
-                (when next-char
-                  (recur (conj! content (in/next! stream)))))))
+                :else
+                (when next-token
+                  (recur (conj! content (lexer/input-value (in/next! stream))))))))
           token (t/stream->token stream
                                  begin-pos
                                  [opening content closing])]
       (if content
         (t/with-token
           (doc/code-span (let [text (str/join content)]
-                                    ; If the resulting string both begins and ends 
-                                    ; with a space character, but does not consist 
-                                    ; entirely of space characters, a single space 
-                                    ; character is removed from the front and back
+                           ; If the resulting string both begins and ends 
+                           ; with a space character, but does not consist 
+                           ; entirely of space characters, a single space 
+                           ; character is removed from the front and back
                            (if (and (str/starts-with? text " ")
                                     (str/ends-with? text " ")
                                     (not (str/blank? text)))
@@ -315,7 +312,8 @@
                              text)))
           token)
         (do (in/reset-position! stream begin-content)
-            (doc/text (str/join opening)))))))
+            ; TODO(Richo): Text element without token??
+            (doc/text (str/join (mapv :char opening))))))))
 
 (declare parse-inlines!)
 
@@ -323,61 +321,67 @@
   (if val (conj v val) v))
 
 (defn parse-link-destination! [stream]
-  (when (= \( (in/peek stream))
+  (when (= \( (:char (in/peek stream)))
     (in/next! stream) ; Discard the first bracket
     (let [content
           (loop [bracket-count 0 ; We keep track of the open brackets to make sure
                                  ; they match the closing brackets
                  content (transient [])]
-            (when-let [next-char (in/peek stream)]
-              (case next-char
-                ; If we find an escape character, we check if the following char is
-                ; a bracket, in which case we discard the escape char and add the 
-                ; bracket to the content list, otherwise we add the escape char
-                \\ (let [escape-char (in/next! stream)]
-                     (if (contains? #{\( \)} (in/peek stream))
-                       (recur bracket-count
-                              (conj! content (in/next! stream)))
-                       (recur bracket-count
-                              (conj! content escape-char))))
+            (when-let [next-token (in/peek stream)]
+              (let [next-char (:char next-token)]
+                (case next-char
+                  ; If we find an escape character, we check if the following char is
+                  ; a bracket, in which case we discard the escape char and add the 
+                  ; bracket to the content list, otherwise we add the escape char
+                  \\ (let [escape-char next-char]
+                       (in/next! stream) ; Skip
+                       (if (contains? #{\( \)} (:char (in/peek stream)))
+                         (recur bracket-count
+                                (conj! content (:char (in/next! stream))))
+                         (recur bracket-count
+                                (conj! content escape-char))))
 
-                ; We found an open bracket, we increment the bracket-count, we add
-                ; it to the content list, and we keep parsing
-                \( (recur (inc bracket-count)
-                          (conj! content (in/next! stream)))
+                  ; We found an open bracket, we increment the bracket-count, we add
+                  ; it to the content list, and we keep parsing
+                  \( (do (in/next! stream) ; Skip
+                         (recur (inc bracket-count)
+                                (conj! content next-char)))
 
-                ; We found a closing bracket, if the bracket-count is zero it means
-                ; the open/close brackets are balanced and we can stop parsing. If
-                ; the bracket-count is not zero we decrement the bracket-count, we
-                ; add the closing bracket to the content list, and keep going
-                \) (if (zero? bracket-count)
-                     (do (in/next! stream)
-                         (persistent! content))
-                     (recur (dec bracket-count)
-                            (conj! content (in/next! stream))))
+                  ; We found a closing bracket, if the bracket-count is zero it means
+                  ; the open/close brackets are balanced and we can stop parsing. If
+                  ; the bracket-count is not zero we decrement the bracket-count, we
+                  ; add the closing bracket to the content list, and keep going
+                  \) (do (in/next! stream) ; Skip
+                         (if (zero? bracket-count)
+                           (persistent! content)
+                           (recur (dec bracket-count)
+                                  (conj! content next-char))))
 
-                ; Any other character is simply added to the content list 
-                (recur bracket-count
-                       (conj! content (in/next! stream))))))]
+                  ; Any other character is simply added to the content list 
+                  (do (in/next! stream) ; Skip
+                      (recur bracket-count
+                             (conj! content (lexer/input-value next-token))))))))]
       (when content (str/join content)))))
 
 (defn parse-line-breaks! [stream]
   (try-parse
    stream
-   (let [spaces (in/take-chars! stream \space)
-         backspace (in/take-1! stream #{\\})]
+   (let [spaces (in/take-while! stream space?)
+         backspace (in/take-1! stream (fn [t] (= \\ (:char t))))]
      (when (parse-newline! stream)
-       [spaces backspace]))))
+       [(mapv :char spaces)
+        (:char backspace)]))))
 
 (defn append-next! [inline-text stream]
+  ;; TODO(Richo): I'm not sure we need to keep track of the :text, maybe we can get it later from the src
   (if inline-text
     (-> inline-text
-        (update :text #(str % (in/next! stream)))
+        (update :text #(str % (lexer/input-value (in/next! stream))))
         (assoc :stop (in/position stream)))
     {:stream stream
      :start (in/position stream)
      :stop (inc ^long (in/position stream))
-     :text (str (in/next! stream))}))
+     :text (lexer/input-value (in/next! stream))}))
 
 (defn append-text [inline-text stream chars ^long stop]
   (if inline-text
@@ -420,9 +424,11 @@
            (unicode-punctuation-character? next-char))))
 
 (defn parse-emph-delimiter! [stream char]
-  (let [prev-char (or (in/peek-at stream (dec ^long (in/position stream))) \space)
-        chars (in/take-chars! stream char)
-        next-char (or (in/peek stream) \space)]
+  (let [prev-char (or (:char (in/peek-at stream (dec ^long (in/position stream))))
+                      \space)
+        chars (mapv :char (in/take-while! stream (fn [t] (= char (:char t)))))
+        next-char (or (:char (in/peek stream)) 
+                      \space)]
     {:type ::delimiter
      :text (str/join chars)
      :open? (can-open? prev-char next-char)
@@ -437,24 +443,24 @@
   [stream]
   (let [begin-pos (in/position stream)]
     (when-let [delimiter
-               (case (in/peek stream)
+               (case (:char (in/peek stream))
                  \* (parse-emph-delimiter! stream \*)
                  \_ (parse-emph-delimiter! stream \_)
-                 \! (do (in/next! stream)
-                        (if (= \[ (in/peek stream))
-                          (do (in/next! stream)
+                 \! (do (in/next! stream) ; Skip
+                        (if (= \[ (:char (in/peek stream)))
+                          (do (in/next! stream) ; Skip
                               {:type ::delimiter
                                :text "!["
                                :open? true
                                :close? false})
                           (do (in/reset-position! stream begin-pos)
                               nil)))
-                 \[ (do (in/next! stream)
+                 \[ (do (in/next! stream) ; Skip
                         {:type ::delimiter
                          :text "["
                          :open? true
                          :close? false})
-                 \] (do (in/next! stream)
+                 \] (do (in/next! stream) ; Skip
                         {:type ::delimiter
                          :text "]"
                          :open? false
@@ -650,12 +656,6 @@
               (conj (delimiter->text close-delimiter)))))
       (conj inlines (delimiter->text close-delimiter)))))
 
-(defn peek-until-newline [stream]
-  (let [begin-pos (in/position stream)
-        result (in/take-while! stream (fn [chr] (not= chr \newline)))]
-    (in/reset-position! stream begin-pos)
-    (str/join "" result)))
-
 (defn parse-inlines! [stream ctx & {:keys [multiline?] :or {multiline? true}}]
   (loop [inlines []
          inline-text nil]
@@ -690,7 +690,7 @@
                               (and (= ::indented-code-block next-line-type)
                                    (peek-line-prefix stream ctx)))
                         (do (parse-line-prefix! stream ctx) ; Discard any line prefix
-                            (in/take-chars! stream \space \tab)  ; Discard any leading spaces
+                            (in/count-while! stream space?)  ; Discard any leading spaces
                             (recur inlines nil))
                         (process-emphasis inlines)))
                     (process-emphasis inlines)))
@@ -779,7 +779,7 @@
     ; We reset the stream to the beginning of the content (skipping all the #)
     (in/reset-position! stream content-start)
     ; Skip any spaces or tabs before parsing the inline content
-    (in/take-chars! stream \space \tab)
+    (in/count-while! stream space?)
     (let [inlines (parse-inlines! stream ctx :multiline? false)]
       (t/with-token (apply doc/heading level inlines)
         (t/stream->token stream begin-pos line)))))
@@ -801,8 +801,9 @@
                 (let [line-begin (in/position stream)
                       {:keys [type]} (peek-line stream ctx)]
                   (if (= ::indented-code-block type)
-                    (do (next-line! stream ctx)
-                        (recur (conj! lines (subs (in/substream stream line-begin) 4))))
+                    (do (next-line! stream ctx) ; Discard next line
+                        (let [actual-line (lexer/flatten (in/substream stream line-begin))]
+                          (recur (conj! lines (subs actual-line 4)))))
                     (persistent! lines))))]
     (t/with-token (doc/code-block "" (str/join lines))
       (t/stream->token stream begin-pos lines))))
@@ -820,7 +821,8 @@
                                  (<= (-> opening :chars count)
                                      (-> next :chars count)))
                       (do (next-line! stream ctx)
-                          (recur (conj! lines (in/substream stream line-begin))))
+                          (let [actual-line (lexer/flatten (in/substream stream line-begin))]
+                            (recur (conj! lines actual-line))))
                       (persistent! lines))
                     (persistent! lines))))
 
@@ -980,3 +982,14 @@
 (defn parse-file [file options eval-form]
   (binding [*parser-file* (str file)]
     (parse (slurp file) options eval-form)))
+
+(comment
+  (do (def src "foo\\\r\nbar")
+      (def stream (in/make-stream (lexer/tokenize src)))
+      (def ctx (make-context nil)))
+
+  (parse-paragraph! stream ctx)
+  (next-line! stream ctx)
+  (peek-line stream ctx)
+
+  )

@@ -24,14 +24,18 @@
              (inc line-count))
       line-idx)))
 
-(defn advance-stream-to-match! [stream reader source]
+(defn advance-stream-to-match! [stream begin-pos reader source]
   (let [^long line-number (e/get-line-number reader)
         ^long column-number (e/get-column-number reader)
         line-position (find-line-idx source line-number)
-        position (+ ^long (in/position stream)
+        position (+ begin-pos
                     line-position
                     (dec column-number))]
-    (in/reset-position! stream position)))
+    (loop []
+      (when-let [{:keys [start]} (in/peek stream)]
+        (when (< start position)
+          (in/next! stream) ; Skip
+          (recur))))))
 
 (defn eval-clojure [form eval-form]
   (let [result (eval-form form)]
@@ -41,21 +45,23 @@
 
 (defn parse-clojure! [stream ctx]
   (when-let [eval-form (-> ctx :eval-form)]
-    (let [begin-pos (in/position stream)]
-      (when (#{\( \[} (in/peek stream))
+    (let [begin-pos (in/position stream)
+          next-token (in/peek stream)]
+      (when (#{\( \[} (:char next-token))
         (try
-          (let [src (subs (in/source stream) begin-pos)
+          (let [src (subs (:src next-token)
+                          (:start next-token))
                 reader (e/source-reader src)
                 form (e/parse-next reader (e/normalize-opts {:all true}))
                 result (eval-clojure form eval-form)]
-            (advance-stream-to-match! stream reader src)
+            (advance-stream-to-match! stream (:start next-token) reader src)
             (t/with-token (doc/clojure form result)
               (t/stream->token stream begin-pos nil)))
           (catch Exception ex
             (when *verbose-eval*
               (let [[line-number column-number]
-                    (find-line-col (in/source stream)
-                                   begin-pos)]
+                    (find-line-col (:src next-token) ; TODO(Richo): I'm not sure this is correct!
+                                   (:start next-token))]
                 (println "ERROR evaluating clojure code at"
                          *parser-file* (str "(Ln " line-number ", Col " column-number "):")
                          (ex-message ex))))
