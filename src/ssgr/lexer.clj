@@ -1,4 +1,5 @@
 (ns ssgr.lexer
+  (:refer-clojure :exclude [flatten])
   (:require [ssgr.input-stream :as in]))
 
 (set! *warn-on-reflection* true)

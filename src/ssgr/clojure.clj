@@ -24,7 +24,7 @@
              (inc line-count))
       line-idx)))
 
-(defn advance-stream-to-match! [stream begin-pos reader source]
+(defn advance-stream-to-match! [stream ^long begin-pos reader source]
   (let [^long line-number (e/get-line-number reader)
         ^long column-number (e/get-column-number reader)
         line-position (find-line-idx source line-number)
@@ -32,7 +32,7 @@
                     line-position
                     (dec column-number))]
     (loop []
-      (when-let [{:keys [start]} (in/peek stream)]
+      (when-let [{:keys [^long start]} (in/peek stream)]
         (when (< start position)
           (in/next! stream) ; Skip
           (recur))))))
