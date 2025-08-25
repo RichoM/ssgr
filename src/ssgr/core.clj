@@ -5,84 +5,50 @@
             [ssgr.parser :as p]
             [ssgr.clojure :as c]
             [ssgr.renderer :as r]
-            [ssgr.eval :as e])
+            [ssgr.eval :as e]
+            [ssgr.utils :as u])
   (:gen-class))
 
-(defn write-file! [path contents]
-  (when-let [parent (fs/parent path)]
-    (fs/create-dirs parent))
-  (spit (fs/file path) contents))
-
-(defn delete-path! [path]
-  (try
-    (fs/delete path)
-    (catch Exception ex
-      (println "Couldn't delete file" (ex-message ex)))))
-
-(defn delete-all! [target-dir]
-  (fs/walk-file-tree target-dir
-                     {:visit-file (fn [path _]
-                                    (delete-path! path)
-                                    :continue)
-                      :post-visit-dir (fn [path _]
-                                        (delete-path! path)
-                                        :continue)}))
-
-(defn copy-file! [src dest options]
-  (when (:verbose options)
-    (println (str src)))
-  (when-let [parent (fs/parent dest)]
-    (fs/create-dirs parent))
-  (fs/copy src dest))
+(defn process-regular-file! [src dest _]
+  (u/copy-file! src dest))
 
 (defn process-clj-file! [path options]
-  (when (:verbose options)
-    (println (str path)))
   (c/eval-file! (fs/file path)
                 options e/eval-form))
 
 (defn process-cljmd-file! [path out options]
-  (when (:verbose options)
-    (println (str path)))
   (let [doc (p/parse-file (fs/file path)
                           options e/eval-form)
         hiccup (r/render doc e/eval-render)
         html (r/html hiccup)]
-    (write-file! (str (fs/strip-ext out) ".html")
-                 html)))
+    (u/write-file! (str (fs/strip-ext out) ".html")
+                   html)))
 
 (defn process-md-file! [path out options]
-  (when (:verbose options)
-    (println (str path)))
   (let [doc (p/parse-file (fs/file path)
                           options nil)
         hiccup (r/render doc e/eval-render)
         html (r/html hiccup)]
-    (write-file! (str (fs/strip-ext out) ".html")
-                 html)))
-
-(defn list-files [src]
-  (when-let [entries (sort (.listFiles (fs/file src)))]
-    (concat (filter fs/regular-file? entries)
-            (->> entries
-                 (filter fs/directory?)
-                 (mapcat list-files)))))
+    (u/write-file! (str (fs/strip-ext out) ".html")
+                   html)))
 
 (defn process! [src out options]
   (println "Looking for files on" (str src))
-  (delete-all! out)
+  (u/delete-all! out)
   (e/reset-callbacks!)
-  (let [files (list-files src)
+  (let [files (u/list-files src)
         begin-time (System/nanoTime)]
     (println "Found" (count files) "files.")
     (doseq [path files]
       (try
         (let [out-path (str/replace-first path (str src) (str out))]
+          (when (:verbose options)
+            (println (str src)))
           (case (fs/extension path)
             "md" (process-md-file! path out-path options)
             "cljmd" (process-cljmd-file! path out-path options)
             "clj" (process-clj-file! path options)
-            (copy-file! path out-path options)))
+            (process-regular-file! path out-path options)))
         (catch Exception ex
           (println (str "ERROR processing " path) ex))))
     (let [end-time (System/nanoTime)]
@@ -155,7 +121,7 @@
 
 (comment
   (require '[clj-async-profiler.core :as prof])
-
+  
   (prof/profile
    (dotimes [i 100]
      (-main #_"-v" "test-files" "out")))
@@ -234,3 +200,4 @@
   ; Time per call: 451,56 ms   Alloc per call: 71.681.904b   Iterations: 67
   ; Time per call: 427,29 ms   Alloc per call: 71.681.319b   Iterations: 73
   )
+
