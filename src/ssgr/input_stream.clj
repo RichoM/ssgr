@@ -6,6 +6,7 @@
   (position [stream])
   (end? [stream])
   (peek [stream])
+  (skip! [stream] [stream count])
   (next! [stream])
   (reset-position! [stream new-pos])
   (substream [stream start][stream start end]))
@@ -22,6 +23,11 @@
           ^long pos (.pos stream)]
       (when (< pos (.length src))
         (char (.charAt src pos)))))
+  (skip! [stream]
+    (set! pos (inc ^long (.pos stream))))
+  (skip! [stream count]
+    (set! pos (+ ^long (.pos stream) 
+                 ^long count)))
   (next! [stream]
     (when-let [val (peek stream)]
       (set! pos (inc ^long (.pos stream)))
@@ -45,6 +51,11 @@
     (nth (.src stream)
          (.pos stream)
          nil))
+  (skip! [stream]
+    (set! pos (inc ^long (.pos stream))))
+  (skip! [stream count]
+    (set! pos (+ ^long (.pos stream)
+                 ^long count)))
   (next! [stream]
     (when-let [val (peek stream)]
       (set! pos (inc ^long (.pos stream)))
