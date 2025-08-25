@@ -22,15 +22,34 @@
 (defn digit? [chr]
   (and chr (Character/isDigit ^char chr)))
 
+(defn letter-or-digit? [chr]
+  (and chr (Character/isLetterOrDigit ^char chr)))
+
 (def space? #{\space \tab})
 
 (def newline-char? #{\return \newline})
 
+(def important-symbol? (set "`~-+*.(){}[]>-_*#-=\\!"))
+
 (defn skip-letters! [stream]
-  (loop []
-    (when (letter? (in/peek stream))
-      (in/next! stream)
-      (recur))))
+  #_(loop []
+      (when (letter? (in/peek stream))
+        (in/next! stream)
+        (recur)))
+  (let [last-valid-pos
+        (loop [last-valid-pos (in/position stream)]
+          (let [next-char (in/peek stream)
+                valid-pos? (letter-or-digit? next-char)]
+            (if (or valid-pos?
+                    (space? next-char)
+                    #_(and (not (newline-char? next-char))
+                           (not (important-symbol? next-char))))
+              (do (in/next! stream)
+                  (recur (if valid-pos?
+                           (in/position stream)
+                           last-valid-pos)))
+              last-valid-pos)))]
+    (in/reset-position! stream last-valid-pos)))
 
 (defn tokenize [src]
   (let [stream (in/make-stream src)]
@@ -81,6 +100,11 @@
   (def src (slurp "test-files/intro.cljmd"))
   (def src (slurp "test-files/03/02_UsoDeConsola.md"))
   (count src)
+  (count (tokenize src))
+
+  (doseq [token (tokenize src)]
+    (println (pr-str (input-value token))))
+
   (def token-stream (in/make-stream (tokenize src)))
 
   (in/next! token-stream)
