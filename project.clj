@@ -20,6 +20,7 @@
                                   [com.clojure-goes-fast/clj-async-profiler "1.6.2"]]
                    :injections [(require 'hashp.preload)]
                    :resource-paths ["sounds"]
+                   :source-paths ["dev"]
                    :plugins [[com.jakemccrary/lein-test-refresh "0.24.1"]]
                    :global-vars {*unchecked-math* :warn-on-boxed
                                  *warn-on-reflection* true}
