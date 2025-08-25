@@ -6,7 +6,7 @@
   (position [stream])
   (end? [stream])
   (peek [stream])
-  (skip! [stream] [stream count])
+  (skip! [stream])
   (next! [stream])
   (reset-position! [stream new-pos])
   (substream [stream start][stream start end]))
@@ -25,9 +25,6 @@
         (char (.charAt src pos)))))
   (skip! [stream]
     (set! pos (inc ^long (.pos stream))))
-  (skip! [stream count]
-    (set! pos (+ ^long (.pos stream) 
-                 ^long count)))
   (next! [stream]
     (when-let [val (peek stream)]
       (set! pos (inc ^long (.pos stream)))
@@ -53,9 +50,6 @@
          nil))
   (skip! [stream]
     (set! pos (inc ^long (.pos stream))))
-  (skip! [stream count]
-    (set! pos (+ ^long (.pos stream)
-                 ^long count)))
   (next! [stream]
     (when-let [val (peek stream)]
       (set! pos (inc ^long (.pos stream)))
@@ -89,7 +83,8 @@
 (defn take-1! [stream predicate]
   (let [next (peek stream)]
     (when (and next (predicate next))
-      (next! stream))))
+      (skip! stream)
+      next)))
 
 (defn take-max! [stream predicate ^long limit]
   (loop [result (transient [])
@@ -107,7 +102,7 @@
       (if (and chr
                (< count limit)
                (predicate chr))
-        (do (next! stream)
+        (do (skip! stream)
             (recur (inc count)))
         count))))
 
@@ -115,12 +110,22 @@
   (loop [count 0]
     (let [chr (peek stream)]
       (if (and chr (predicate chr))
-        (do (next! stream)
+        (do (skip! stream)
             (recur (inc count)))
         count))))
 
 (defn count-until! ^long [stream predicate]
   (count-while! stream (complement predicate)))
+
+(defn skip-while! [stream predicate]
+  (loop []
+    (let [chr (peek stream)]
+      (when (and chr (predicate chr))
+        (skip! stream)
+        (recur)))))
+
+(defn skip-until! [stream predicate]
+  (skip-while! stream (complement predicate)))
 
 (defn peek-at [stream pos]
   (nth (source stream) pos nil))

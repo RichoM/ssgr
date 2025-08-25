@@ -49,7 +49,7 @@
 (defn parse-newline! [stream]
   (let [token (in/peek stream)]
     (when (newline? token)
-      (in/next! stream)
+      (in/skip! stream)
       token)))
 
 (defn parse-newline-or-end! [stream]
@@ -62,7 +62,7 @@
 (defn parse-bullet-list-marker! [stream]
   (when-let [next (:char (in/peek stream))]
     (when (#{\- \+ \*} next)
-      (in/next! stream)
+      (in/skip! stream)
       {:type ::bullet-list-marker
        :digits ""
        :char next})))
@@ -76,7 +76,7 @@
                         (str/join))
             next-char (:char (in/peek stream))]
         (when (#{\. \)} next-char)
-          (in/next! stream)
+          (in/skip! stream)
           {:type ::ordered-list-marker
            :digits digits
            :char next-char}))
@@ -99,7 +99,7 @@
    stream
    (when (= \> (:char (in/next! stream)))
      (when (= \space (:char (in/peek stream)))
-       (in/next! stream))
+       (in/skip! stream))
      {:type ::blockquote})))
 
 (defn parse-thematic-break-line! [stream]
@@ -109,7 +109,7 @@
      (when (#{\- \_ \*} next-char)
        (let [chars (in/take-while! stream (fn [t] (= next-char (:char t))))]
          (when (>= (count chars) 3)
-           (in/count-while! stream space?)
+           (in/skip-while! stream space?)
            (when (parse-newline-or-end! stream)
              {:type ::thematic-break
               :chars (mapv :char chars)})))))))
@@ -134,7 +134,7 @@
    (let [next-char (:char (in/peek stream))]
      (when (#{\- \=} next-char)
        (let [chars (in/take-while! stream (fn [t] (= next-char (:char t))))]
-         (in/count-while! stream space?) ; Discard trailing spaces
+         (in/skip-while! stream space?) ; Discard trailing spaces
          (when (parse-newline-or-end! stream)
            {:type ::setext-heading-underline
             :chars (mapv :char chars)}))))))
@@ -166,7 +166,7 @@
 (defn parse-blank-line! [stream]
   (try-parse
    stream
-   (do (in/count-while! stream space?) ; Discard all spaces
+   (do (in/skip-while! stream space?) ; Discard all spaces
        (when (parse-newline! stream)         
          {:type ::blank}))))
 
@@ -175,7 +175,7 @@
    stream
    (when-not (in/end? stream)
      (when-not (space? (in/peek stream))
-       (in/count-until! stream newline?)
+       (in/skip-until! stream newline?)
        (parse-newline! stream)
        {:type ::paragraph}))))
 
@@ -284,11 +284,11 @@
                 ; Line endings are converted to spaces, but only if the next line is either
                 ; a paragraph or an indented-code-block.
                 (newline? next-token)
-                (do (in/next! stream) ; Discard newline
+                (do (in/skip! stream) ; Discard newline
                     (when (contains? #{::paragraph ::indented-code-block}
                                      (:type (peek-line stream ctx)))
                       ; Discard leading spaces
-                      (in/count-while! stream space?)
+                      (in/skip-while! stream space?)
                       (recur (conj! content \space))))
 
                 ; Anything else is appended to the content
@@ -322,7 +322,7 @@
 
 (defn parse-link-destination! [stream]
   (when (= \( (:char (in/peek stream)))
-    (in/next! stream) ; Discard the first bracket
+    (in/skip! stream) ; Discard the first bracket
     (let [content
           (loop [bracket-count 0 ; We keep track of the open brackets to make sure
                                  ; they match the closing brackets
@@ -334,7 +334,7 @@
                   ; a bracket, in which case we discard the escape char and add the 
                   ; bracket to the content list, otherwise we add the escape char
                   \\ (let [escape-char next-char]
-                       (in/next! stream) ; Skip
+                       (in/skip! stream) ; Skip
                        (if (contains? #{\( \)} (:char (in/peek stream)))
                          (recur bracket-count
                                 (conj! content (:char (in/next! stream))))
@@ -343,7 +343,7 @@
 
                   ; We found an open bracket, we increment the bracket-count, we add
                   ; it to the content list, and we keep parsing
-                  \( (do (in/next! stream) ; Skip
+                  \( (do (in/skip! stream) ; Skip
                          (recur (inc bracket-count)
                                 (conj! content next-char)))
 
@@ -351,14 +351,14 @@
                   ; the open/close brackets are balanced and we can stop parsing. If
                   ; the bracket-count is not zero we decrement the bracket-count, we
                   ; add the closing bracket to the content list, and keep going
-                  \) (do (in/next! stream) ; Skip
+                  \) (do (in/skip! stream) ; Skip
                          (if (zero? bracket-count)
                            (persistent! content)
                            (recur (dec bracket-count)
                                   (conj! content next-char))))
 
                   ; Any other character is simply added to the content list 
-                  (do (in/next! stream) ; Skip
+                  (do (in/skip! stream) ; Skip
                       (recur bracket-count
                              (conj! content (lexer/input-value next-token))))))))]
       (when content (str/join content)))))
@@ -446,21 +446,21 @@
                (case (:char (in/peek stream))
                  \* (parse-emph-delimiter! stream \*)
                  \_ (parse-emph-delimiter! stream \_)
-                 \! (do (in/next! stream) ; Skip
+                 \! (do (in/skip! stream) ; Skip
                         (if (= \[ (:char (in/peek stream)))
-                          (do (in/next! stream) ; Skip
+                          (do (in/skip! stream) ; Skip
                               {:type ::delimiter
                                :text "!["
                                :open? true
                                :close? false})
                           (do (in/reset-position! stream begin-pos)
                               nil)))
-                 \[ (do (in/next! stream) ; Skip
+                 \[ (do (in/skip! stream) ; Skip
                         {:type ::delimiter
                          :text "["
                          :open? true
                          :close? false})
-                 \] (do (in/next! stream) ; Skip
+                 \] (do (in/skip! stream) ; Skip
                         {:type ::delimiter
                          :text "]"
                          :open? false
@@ -690,7 +690,7 @@
                               (and (= ::indented-code-block next-line-type)
                                    (peek-line-prefix stream ctx)))
                         (do (parse-line-prefix! stream ctx) ; Discard any line prefix
-                            (in/count-while! stream space?)  ; Discard any leading spaces
+                            (in/skip-while! stream space?)  ; Discard any leading spaces
                             (recur inlines nil))
                         (process-emphasis inlines)))
                     (process-emphasis inlines)))
@@ -779,7 +779,7 @@
     ; We reset the stream to the beginning of the content (skipping all the #)
     (in/reset-position! stream content-start)
     ; Skip any spaces or tabs before parsing the inline content
-    (in/count-while! stream space?)
+    (in/skip-while! stream space?)
     (let [inlines (parse-inlines! stream ctx :multiline? false)]
       (t/with-token (apply doc/heading level inlines)
         (t/stream->token stream begin-pos line)))))

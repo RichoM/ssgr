@@ -44,7 +44,7 @@
                     (space? next-char)
                     #_(and (not (newline-char? next-char))
                            (not (important-symbol? next-char))))
-              (do (in/next! stream)
+              (do (in/skip! stream)
                   (recur (if valid-pos?
                            (in/position stream)
                            last-valid-pos)))
@@ -74,7 +74,7 @@
                 (newline-char? next-char)
                 (if (= \return next-char)
                   (if (= \newline (in/peek stream))
-                    (do (in/next! stream) ; Skip
+                    (do (in/skip! stream) ; Skip
                         (make-token src ::newline next-char pos 2))
                     (make-token src ::newline next-char pos))
                   (make-token src ::newline next-char pos))
