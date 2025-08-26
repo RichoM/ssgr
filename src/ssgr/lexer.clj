@@ -32,23 +32,20 @@
 (def important-symbol? (set "`~-+*.(){}[]>-_*#-=\\!"))
 
 (defn skip-letters! [stream]
-  #_(loop []
-      (when (letter? (in/peek stream))
-        (in/next! stream)
-        (recur)))
   (let [last-valid-pos
         (loop [last-valid-pos (in/position stream)]
-          (let [next-char (in/peek stream)
-                valid-pos? (letter-or-digit? next-char)]
-            (if (or valid-pos?
-                    (space? next-char)
-                    #_(and (not (newline-char? next-char))
+          (if-let [next-char (in/peek stream)]
+            (let [valid-pos? (letter-or-digit? next-char)]
+              (if (or valid-pos?
+                      (space? next-char)
+                      (and (not (newline-char? next-char))
                            (not (important-symbol? next-char))))
-              (do (in/skip! stream)
-                  (recur (if valid-pos?
-                           (in/position stream)
-                           last-valid-pos)))
-              last-valid-pos)))]
+                (do (in/skip! stream)
+                    (recur (if valid-pos?
+                             (in/position stream)
+                             last-valid-pos)))
+                last-valid-pos))
+            last-valid-pos))]
     (in/reset-position! stream last-valid-pos)))
 
 (defn tokenize [src]
@@ -111,27 +108,7 @@
   (in/reset-position! token-stream 0)
   (in/take-while! token-stream (comp #{\# \space} :char))
   (in/position token-stream)
-  
+
   (user/time+
    (tokenize src))
-
-  
-  ; digit? 0-9
-  ; space? \space \tab
-  ; code-fence-char? \` \~
-  ; newline-char? \return \newline
-  ; bullet-list-marker? \- \+ \*
-  ; ordered-list-separator? \. \)
-  ; blockquote-marker? \>
-  ; thematic-break? \- \_ \*
-  ; atx-heading? \#
-  ; setext-underline? \- \=
-  ; 
-  ; 
-  ; word
-  ; digit
-  ; space
-  ; symbol
-  ; newline
-
   )
