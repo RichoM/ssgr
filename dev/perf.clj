@@ -3,7 +3,8 @@
             [babashka.fs :as fs]
             [ssgr.parser :as p]
             [ssgr.eval :as e]
-            [user :refer [time+]]))
+            [user :refer [time+]]
+            [clj-async-profiler.core :as prof]))
 
 (def test-file "dev/perf.md")
 
@@ -24,11 +25,22 @@
              "mode...")
     (time+ 30000
            (count (:blocks (p/parse src options eval-form))))))
+
+(defn profile [cljmd?]
+  (let [src (slurp test-file)
+        options {}
+        eval-form (if cljmd? e/eval-form nil)]
+    (println "Parsing in"
+             (if cljmd? "CLJMD" "MD")
+             "mode...")
+    (prof/profile
+     (dotimes [_ 100]
+       (p/parse src options eval-form)))))
   
-
-; Time per call: 104,82 ms   Alloc per call: 85.106.833b   Iterations: 289
-; Time per call: 79,39 ms   Alloc per call: 60.207.669b   Iterations: 386
-
 (comment
   (benchmark true)
+
+  (profile false)
+
+  (prof/serve-ui 8080)
   )

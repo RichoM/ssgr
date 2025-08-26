@@ -120,20 +120,7 @@
       (process! src out options))))
 
 (comment
-  (require '[clj-async-profiler.core :as prof])
   
-  (prof/profile
-   (dotimes [i 100]
-     (-main #_"-v" "test-files" "out")))
-
-  (prof/profile
-   {:event :alloc}
-   (dotimes [i 50]
-     (-main #_"-v" "test-files" "out")))
-
-
-  (prof/serve-ui 8080)
-
   ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
   ;; Mac
   (user/time+ 30000 (-main "test-files" "out"))
