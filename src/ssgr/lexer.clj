@@ -16,6 +16,14 @@
     (subs src start (+ start count))
     (str char)))
 
+(defn flatten [tokens]
+  (let [first-token (first tokens)
+        last-token (last tokens)]
+    (subs (:src first-token)
+          (:start first-token)
+          (+ ^long (:start last-token)
+             ^long (:count last-token)))))
+
 (defn letter? [chr]
   (and chr (Character/isLetter ^char chr)))
 
@@ -81,14 +89,6 @@
           (recur (conj! tokens token)
                  (in/position stream)))
         (persistent! tokens)))))
-
-(defn flatten [tokens]
-  (let [first-token (first tokens)
-        last-token (last tokens)]
-    (subs (:src first-token)
-          (:start first-token)
-          (+ ^long (:start last-token)
-             ^long (:count last-token)))))
 
 (comment
   (require 'user)
