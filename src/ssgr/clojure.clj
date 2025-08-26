@@ -25,6 +25,9 @@
       line-idx)))
 
 (defn advance-stream-to-match! [stream ^long begin-pos reader source]
+  ; TODO(Richo): This could be made faster if the tokens would hold their line and
+  ; column numbers. I could avoid calling find-line-idx and simply advance the stream
+  ; until the correct token. 
   (let [^long line-number (e/get-line-number reader)
         ^long column-number (e/get-column-number reader)
         line-position (find-line-idx source line-number)
