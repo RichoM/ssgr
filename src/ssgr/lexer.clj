@@ -6,10 +6,20 @@
 (set! *unchecked-math* :warn-on-boxed)
 
 (defn make-token
-  ([src type char start]
-   {:src src :type type :char char :start start :count 1})
-  ([src type char start count]
-   {:src src :type type :char char :start start :count count}))
+  ([src type char line-number column-number start]
+   {:src src 
+    ;:input-value (subs src start (+ start 1))
+    :type type :char char 
+    :line-number line-number
+    :column-number column-number
+    :start start :count 1})
+  ([src type char line-number column-number start count]
+   {:src src     
+    ;:input-value (subs src start (+ start count))
+    :type type :char char 
+    :line-number line-number
+    :column-number column-number
+    :start start :count count}))
 
 (defn input-value [{:keys [src type char ^long start ^long count]}]
   (if (= ::word type)
@@ -59,35 +69,47 @@
 (defn tokenize [src]
   (let [stream (in/make-stream src)]
     (loop [tokens (transient [])
-           pos (in/position stream)]
+           ^long pos (in/position stream)
+           line-number 1
+           ^long begin-line-pos pos]
       (if-let [next-char (in/next! stream)]
-        (let [token
+        (let [column-number (- pos begin-line-pos)
+              is-newline? (newline-char? next-char)
+
+              token
               (cond
                 (letter? next-char)
                 (do (skip-letters! stream)
                     (make-token src ::word next-char
+                                line-number column-number
                                 pos
                                 (- ^long (in/position stream)
                                    ^long pos)))
 
                 (space? next-char)
-                (make-token src ::space next-char pos)
+                (make-token src ::space next-char line-number column-number pos)
 
                 (digit? next-char)
-                (make-token src ::digit next-char pos)
+                (make-token src ::digit next-char line-number column-number pos)
 
-                (newline-char? next-char)
+                is-newline?
                 (if (= \return next-char)
                   (if (= \newline (in/peek stream))
-                    (do (in/skip! stream) ; Skip
-                        (make-token src ::newline next-char pos 2))
-                    (make-token src ::newline next-char pos))
-                  (make-token src ::newline next-char pos))
+                    (do (in/skip! stream)
+                        (make-token src ::newline next-char line-number column-number pos 2))
+                    (make-token src ::newline next-char line-number column-number pos))
+                  (make-token src ::newline next-char line-number column-number pos))
 
                 :else
-                (make-token src ::symbol next-char pos))]
+                (make-token src ::symbol next-char line-number column-number pos))]
           (recur (conj! tokens token)
-                 (in/position stream)))
+                 (in/position stream)
+                 (if is-newline?
+                   (inc line-number)
+                   line-number)
+                 (if is-newline?
+                   (in/position stream)
+                   begin-line-pos)))
         (persistent! tokens)))))
 
 (comment
@@ -98,6 +120,8 @@
   (def src (slurp "test-files/03/02_UsoDeConsola.md"))
   (count src)
   (count (tokenize src))
+  (def tokens (tokenize src))
+  (take 20 tokens)
 
   (doseq [token (tokenize src)]
     (println (pr-str (input-value token))))
