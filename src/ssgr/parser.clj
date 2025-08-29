@@ -366,11 +366,15 @@
 (defn parse-line-breaks! [stream]
   (try-parse
    stream
-   (let [spaces (in/take-while! stream space?)
-         backspace (in/take-1! stream (fn [t] (= \\ (:char t))))]
-     (when (parse-newline! stream)
-       [(mapv :char spaces)
-        (:char backspace)]))))
+   (do (in/skip-while! stream (fn [{:keys [char]}]
+                                (or (space? char)
+                                    (= \\ char))))
+       (when-let [newline (parse-newline! stream)]
+         (let [backslash (= \\ (lexer/prev-char newline))
+               spaces (lexer/count-spaces-backwards!
+                       newline
+                       (if backslash 2 1))]
+           [spaces backslash])))))
 
 (defn append-next! [inline-text stream]
   ;; TODO(Richo): I'm not sure we need to keep track of the :text, maybe we can get it later from the src
@@ -382,16 +386,6 @@
      :start (in/position stream)
      :stop (inc ^long (in/position stream))
      :text (lexer/input-value (in/next! stream))}))
-
-(defn append-text [inline-text stream chars ^long stop]
-  (if inline-text
-    (-> inline-text
-        (update :text #(str % (apply str chars)))
-        (assoc :stop stop))
-    {:stream stream
-     :start (- stop (count chars))
-     :stop stop
-     :text (apply str chars)}))
 
 (defn close-text [inline-text]
   (when-let [{:keys [stream ^long start ^long stop text]} inline-text]
@@ -423,8 +417,8 @@
            (unicode-whitespace-character? next-char)
            (unicode-punctuation-character? next-char))))
 
-(defn parse-emph-delimiter! [stream char]
-  (let [prev-char (or (:char (in/peek-at stream (dec ^long (in/position stream))))
+(defn parse-emph-delimiter! [stream token char]
+  (let [prev-char (or (lexer/prev-char token)
                       \space)
         chars (mapv :char (in/take-while! stream (fn [t] (= char (:char t)))))
         next-char (or (:char (in/peek stream)) 
@@ -443,29 +437,30 @@
   [stream]
   (let [begin-pos (in/position stream)]
     (when-let [delimiter
-               (case (:char (in/peek stream))
-                 \* (parse-emph-delimiter! stream \*)
-                 \_ (parse-emph-delimiter! stream \_)
-                 \! (do (in/skip! stream) ; Skip
-                        (if (= \[ (:char (in/peek stream)))
-                          (do (in/skip! stream) ; Skip
-                              {:type ::delimiter
-                               :text "!["
-                               :open? true
-                               :close? false})
-                          (do (in/reset-position! stream begin-pos)
-                              nil)))
-                 \[ (do (in/skip! stream) ; Skip
-                        {:type ::delimiter
-                         :text "["
-                         :open? true
-                         :close? false})
-                 \] (do (in/skip! stream) ; Skip
-                        {:type ::delimiter
-                         :text "]"
-                         :open? false
-                         :close? true})
-                 nil)]
+               (let [token (in/peek stream)]
+                 (case (:char token)
+                   \* (parse-emph-delimiter! stream token \*)
+                   \_ (parse-emph-delimiter! stream token \_)
+                   \! (do (in/skip! stream) ; Skip
+                          (if (= \[ (:char (in/peek stream)))
+                            (do (in/skip! stream) ; Skip
+                                {:type ::delimiter
+                                 :text "!["
+                                 :open? true
+                                 :close? false})
+                            (do (in/reset-position! stream begin-pos)
+                                nil)))
+                   \[ (do (in/skip! stream) ; Skip
+                          {:type ::delimiter
+                           :text "["
+                           :open? true
+                           :close? false})
+                   \] (do (in/skip! stream) ; Skip
+                          {:type ::delimiter
+                           :text "]"
+                           :open? false
+                           :close? true})
+                   nil))]
       (t/with-token
         delimiter
         (t/stream->token stream begin-pos (:text delimiter))))))
@@ -673,14 +668,13 @@
                 (let [token (t/stream->token stream begin-pos [spaces backslash])
                       inlines (if backslash
                                 (-> inlines
-                                    (condj (-> inline-text
-                                               (append-text stream spaces
-                                                            (+ begin-pos (count spaces)))
-                                               (close-text)))
+                                    (condj (close-text inline-text))
                                     (condj (t/with-token (doc/hard-break) token)))
                                 (-> inlines
-                                    (condj (close-text inline-text))
-                                    (condj (t/with-token (if (>= (count spaces) 2)
+                                    (condj (when-let [text (close-text inline-text)] ; TODO(Richo): This sucks!
+                                             (when (> (count (:text text)) spaces)
+                                               (update text :text #(subs % 0 (- (count %) spaces))))))
+                                    (condj (t/with-token (if (>= spaces 2)
                                                            (doc/hard-break)
                                                            (doc/soft-break))
                                              token))))]

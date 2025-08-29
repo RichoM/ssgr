@@ -21,6 +21,9 @@
     :column-number column-number
     :start start :count count}))
 
+(defn prev-char [{:keys [src ^long start]}]
+  (nth src (dec start) nil))
+
 (defn input-value [{:keys [src type char ^long start ^long count]}]
   (if (= ::word type)
     (subs src start (+ start count))
@@ -49,22 +52,25 @@
 
 (def important-symbol? (set "`~-+*.(){}[]>-_*#-=\\!"))
 
+(defn count-spaces-backwards! 
+  [{:keys [src ^long start]} ^long offset]
+  (loop [result 0
+         idx (- start offset)]
+    (let [char (nth src idx nil)]
+      (if (and char (space? char))
+        (recur (inc result)
+               (dec idx))
+        result))))
+
 (defn skip-letters! [stream]
-  (let [last-valid-pos
-        (loop [last-valid-pos (in/position stream)]
-          (if-let [next-char (in/peek stream)]
-            (let [valid-pos? (letter-or-digit? next-char)]
-              (if (or valid-pos?
-                      (space? next-char)
-                      (and (not (newline-char? next-char))
-                           (not (important-symbol? next-char))))
-                (do (in/skip! stream)
-                    (recur (if valid-pos?
-                             (in/position stream)
-                             last-valid-pos)))
-                last-valid-pos))
-            last-valid-pos))]
-    (in/reset-position! stream last-valid-pos)))
+  (loop []
+    (when-let [next-char (in/peek stream)]
+      (when (or (letter-or-digit? next-char)
+                (space? next-char)
+                (and (not (newline-char? next-char))
+                     (not (important-symbol? next-char))))
+        (in/skip! stream)
+        (recur)))))
 
 (defn tokenize [src]
   (let [stream (in/make-stream src)]
