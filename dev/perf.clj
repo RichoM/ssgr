@@ -3,6 +3,7 @@
             [babashka.fs :as fs]
             [ssgr.parser :as p]
             [ssgr.eval :as e]
+            [ssgr.renderer :as r]
             [user :refer [time+]]
             [clj-async-profiler.core :as prof]))
 
@@ -35,12 +36,15 @@
              "mode...")
     (prof/profile
      (dotimes [_ 100]
-       (p/parse src options eval-form)))))
+       (let [doc (p/parse src options eval-form)
+             hiccup (r/render doc e/eval-render)
+             html (r/html hiccup)]
+         (count html))))))
   
 (comment
   (benchmark true)
 
-  (profile false)
+  (profile true)
 
   (prof/serve-ui 8080)
   )
