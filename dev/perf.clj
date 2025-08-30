@@ -17,7 +17,7 @@
       (spit out-file contents :append true)
       (spit out-file "\r\n\r\n" :append true))))
   
-(defn benchmark [cljmd?]  
+(defn benchmark-parse [cljmd?]  
   (let [src (slurp test-file)
         options {}
         eval-form (if cljmd? e/eval-form nil)]
@@ -26,6 +26,17 @@
              "mode...")
     (time+ 30000
            (count (:blocks (p/parse src options eval-form))))))
+
+(defn benchmark-render [cljmd?]
+  (let [src (slurp test-file)
+        options {}
+        eval-form (if cljmd? e/eval-form nil)
+        doc (p/parse src options eval-form)]
+    (println "Rendering in"
+             (if cljmd? "CLJMD" "MD")
+             "mode...")
+    (time+ 30000
+           (r/render doc e/eval-render))))
 
 (defn profile [cljmd?]
   (let [src (slurp test-file)
@@ -42,8 +53,13 @@
          (count html))))))
   
 (comment
-  (benchmark true)
+  (benchmark-parse true)
+  (benchmark-render true)
 
+  ; Time per call: 11,02 ms   Alloc per call: 9.146.703b   Iterations: 2737
+  ; Time per call: 11,06 ms   Alloc per call: 9.146.816b   Iterations: 2773
+  ; Time per call: 10,96 ms   Alloc per call: 9.146.816b   Iterations: 2813
+  
   (profile true)
 
   (prof/serve-ui 8080)
