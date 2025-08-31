@@ -54,7 +54,7 @@
                 result (eval-clojure form eval-form)]
             (advance-stream-to-match! stream first-token reader)
             (t/with-token (doc/clojure form result)
-              (t/stream->token stream begin-pos nil)))
+              (t/stream->token stream begin-pos)))
           (catch Exception ex
             (when *verbose-eval*
               (let [{:keys [line-number column-number]} first-token]

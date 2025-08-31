@@ -295,9 +295,7 @@
                 :else
                 (when next-token
                   (recur (conj! content (lexer/input-value (in/next! stream))))))))
-          token (t/stream->token stream
-                                 begin-pos
-                                 [opening content closing])]
+          token (t/stream->token stream begin-pos)]
       (if content
         (t/with-token
           (doc/code-span (let [text (str/join content)]
@@ -391,7 +389,7 @@
   (when-let [{:keys [stream ^long start ^long stop text]} inline-text]
     (when (> stop start)
       (t/with-token (doc/text text)
-        (t/stream->token stream start stop text)))))
+        (t/stream->token stream start stop)))))
 
 (defn- can-open?
   "A left-flanking delimiter run is a delimiter run that is (1) not followed 
@@ -463,7 +461,7 @@
                    nil))]
       (t/with-token
         delimiter
-        (t/stream->token stream begin-pos (:text delimiter))))))
+        (t/stream->token stream begin-pos)))))
 
 (defn split-delimiter-at
   [{:keys [text] :as delimiter} ^long n]
@@ -475,15 +473,13 @@
        (when token
          (t/make-token (t/source token)
                        (t/start token)
-                       n
-                       l-text)))
+                       n)))
      (t/with-token
        (assoc delimiter :text r-text)
        (when token
          (t/make-token (t/source token)
                        (+ ^long (t/start token) n)
-                       (- (count text) n)
-                       r-text)))]))
+                       (- (count text) n))))]))
 
 (defn- find-last-index ^long [items pred]
   (loop [idx (dec (count items))]
@@ -640,8 +636,7 @@
                                         (apply doc/image link-destination
                                                (process-emphasis after)))
                           (t/stream->token stream
-                                           (-> open-delimiter meta :token t/start)
-                                           [open-delimiter after close-delimiter link-destination])))))
+                                           (-> open-delimiter meta :token t/start))))))
             (do (in/reset-position! stream begin-pos)
                 (-> inlines
                     (update idx delimiter->text)
@@ -665,7 +660,7 @@
 
       :else (let [^long begin-pos (in/position stream)]
               (if-let [[spaces backslash] (parse-line-breaks! stream)]
-                (let [token (t/stream->token stream begin-pos [spaces backslash])
+                (let [token (t/stream->token stream begin-pos)
                       inlines (if backslash
                                 (-> inlines
                                     (condj (close-text inline-text))
@@ -713,7 +708,7 @@
 
 (defn parse-paragraph! [stream ctx]
   (let [begin-pos (in/position stream)
-        make-token (fn [lines] (t/stream->token stream begin-pos lines))
+        make-token (fn [lines] (t/stream->token stream begin-pos)) ; TODO(Richo): lines are not needed!
         make-paragraph (fn [lines]
                          (t/with-token (apply doc/paragraph (apply concat lines))
                            (make-token lines)))
@@ -762,21 +757,21 @@
             (make-paragraph (persistent! lines))))))))
 
 (defn parse-thematic-break! [stream ctx]
-  (let [begin-pos (in/position stream)
-        line (next-line! stream ctx)]
+  (let [begin-pos (in/position stream)]
+    (next-line! stream ctx) ; Skip next line
     (t/with-token (doc/thematic-break)
-      (t/stream->token stream begin-pos line))))
+      (t/stream->token stream begin-pos))))
 
 (defn parse-atx-heading! [stream ctx]
   (let [begin-pos (in/position stream)
-        {:keys [level content-start] :as line} (next-line! stream ctx)]
+        {:keys [level content-start]} (next-line! stream ctx)]
     ; We reset the stream to the beginning of the content (skipping all the #)
     (in/reset-position! stream content-start)
     ; Skip any spaces or tabs before parsing the inline content
     (in/skip-while! stream space?)
     (let [inlines (parse-inlines! stream ctx :multiline? false)]
       (t/with-token (apply doc/heading level inlines)
-        (t/stream->token stream begin-pos line)))))
+        (t/stream->token stream begin-pos)))))
 
 (defn parse-blank-lines! [stream ctx]
   (loop []
@@ -790,6 +785,9 @@
   ; the code blocks should preserve whatever the user typed. 
   ; However, since we're parsing an indented block code, we need 
   ; to remove the first 4 indentation spaces.
+  ; TODO(Richo): Instead of flattening each line and adding it to the lines
+  ; vector, maybe we can just collect all the tokens and flatten them together
+  ; at the end. That should be faster since it also avoids calling str/join
   (let [begin-pos (in/position stream)
         lines (loop [lines (transient [])]
                 (let [line-begin (in/position stream)
@@ -800,7 +798,7 @@
                           (recur (conj! lines (subs actual-line 4)))))
                     (persistent! lines))))]
     (t/with-token (doc/code-block "" (str/join lines))
-      (t/stream->token stream begin-pos lines))))
+      (t/stream->token stream begin-pos))))
 
 (defn parse-fenced-code-block! [stream ctx]
   (let [begin-pos (in/position stream)
@@ -821,12 +819,11 @@
                     (persistent! lines))))
 
         ; We may or may not have a closing fence
-        closing (when (= ::code-fence (:type (peek-line stream ctx)))
-                  (next-line! stream ctx))]
+        _closing (when (= ::code-fence (:type (peek-line stream ctx)))
+                   (next-line! stream ctx))]
     (t/with-token (doc/code-block (str/trim (:info-string opening))
                                   (str/join lines))
-      (t/stream->token stream begin-pos
-                       [opening lines closing]))))
+      (t/stream->token stream begin-pos))))
 
 (declare parse-block!)
 
@@ -881,7 +878,7 @@
                            (compatible-list-markers? marker (:marker next-line)))
                     (let [blocks (parse-list-item-blocks! stream new-ctx)
                           item (t/with-token (apply doc/list-item blocks)
-                                 (t/stream->token stream begin-item-pos nil))]
+                                 (t/stream->token stream begin-item-pos))]
                       (recur (conj! items item)
                              (in/position stream)))
                     (do (in/reset-position! stream begin-item-pos)
@@ -897,7 +894,7 @@
     (when (= ::blank (peek items))
       (in/reset-position! stream last-valid-pos))
     (t/with-token (apply list-fn (remove #{::blank} items))
-      (t/stream->token stream begin-list-pos nil))))
+      (t/stream->token stream begin-list-pos))))
 
 (defn parse-blockquote! [stream ctx]
   (let [begin-pos (in/position stream)
@@ -928,7 +925,7 @@
                          (recur (conj! blocks next-block)))))
                    (persistent! blocks)))]
     (t/with-token (apply doc/blockquote blocks)
-      (t/stream->token stream begin-pos nil))))
+      (t/stream->token stream begin-pos))))
 
 (defn parse-block! [stream ctx]
   (when-let [{:keys [type] :as line} (peek-line stream ctx)]
@@ -971,7 +968,7 @@
            ctx (make-context eval-form)
            blocks (parse-blocks! stream ctx)]
        (t/with-token (apply doc/document blocks)
-         (t/make-token src 0 (count src) nil))))))
+         (t/make-token src 0 (count src)))))))
 
 (defn parse-file [file options eval-form]
   (binding [*parser-file* (str file)]

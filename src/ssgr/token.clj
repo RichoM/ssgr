@@ -5,16 +5,14 @@
 (def ^:dynamic *debug-verbose-tokens* false)
 (def ^:dynamic *parser-file* nil)
 
-(defn make-token [source start count value]
+(defn make-token [source start count]
   {:source source
    :start start
-   :count count
-   :parsed-value value})
+   :count count})
 
 (defn source [token] (:source token))
 (defn start [token] (:start token))
 (defn count [token] (:count token))
-(defn parsed-value [token] (:parsed-value token))
 
 (defn stop [{:keys [^long start ^long count]}]
   (+ start count))
@@ -33,16 +31,14 @@
 
 (defn stream->token
   "Utility function to make a token from the current position of a stream"
-  ([stream begin-pos parsed-value]
+  ([stream begin-pos]
    (stream->token stream
                   begin-pos
-                  (in/position stream)
-                  parsed-value))
-  ([stream ^long begin-pos ^long end-pos parsed-value]
+                  (in/position stream)))
+  ([stream ^long begin-pos ^long end-pos]
    (make-token (in/source stream)
                begin-pos
-               (- end-pos begin-pos)
-               parsed-value)))
+               (- end-pos begin-pos))))
 
 (defn merge-tokens [nodes]
   (let [tokens (vec (keep #(-> % meta :token) nodes))]
@@ -55,7 +51,7 @@
                       (start first-token)
                       (- ^long (stop last-token)
                          ^long (start first-token))
-                      nodes))))))
+                      ))))))
 
 (defn with-token [node token]
   (vary-meta (if token
