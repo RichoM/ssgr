@@ -459,27 +459,14 @@
                            :open? false
                            :close? true})
                    nil))]
-      (t/with-token
-        delimiter
-        (t/stream->token stream begin-pos)))))
+      delimiter)))
 
 (defn split-delimiter-at
   [{:keys [text] :as delimiter} ^long n]
-  (let [token (-> delimiter meta :token)
-        l-text (subs text 0 n)
+  (let [l-text (subs text 0 n)
         r-text (subs text n)]
-    [(t/with-token
-       (assoc delimiter :text l-text)
-       (when token
-         (t/make-token (t/source token)
-                       (t/start token)
-                       n)))
-     (t/with-token
-       (assoc delimiter :text r-text)
-       (when token
-         (t/make-token (t/source token)
-                       (+ ^long (t/start token) n)
-                       (- (count text) n))))]))
+    [(assoc delimiter :text l-text)
+     (assoc delimiter :text r-text)]))
 
 (defn- find-last-index ^long [items pred]
   (loop [idx (dec (count items))]
@@ -490,8 +477,7 @@
       -1)))
 
 (defn delimiter->text [delimiter]
-  (t/with-token (doc/text (:text delimiter))
-    (-> delimiter meta :token)))
+  (doc/text (:text delimiter)))
 
 (defn- ensure-no-delimiter-left-behind [inlines] ; TODO(Richo): This shouldn't be necessary!
   (->> inlines
@@ -583,7 +569,8 @@
                                              doc/strong-emphasis
                                              doc/emphasis)
                                            (ensure-no-delimiter-left-behind content))
-                        (t/merge-tokens [open content close]))
+                        nil
+                        #_(t/merge-tokens [open content close]))
                  pre (subvec inlines
                              0
                              (min opener-idx (count inlines)))
@@ -635,7 +622,8 @@
                                                   link-destination)
                                         (apply doc/image link-destination
                                                (process-emphasis after)))
-                          (t/stream->token stream
+                          nil
+                          #_(t/stream->token stream
                                            (-> open-delimiter meta :token t/start))))))
             (do (in/reset-position! stream begin-pos)
                 (-> inlines
@@ -708,16 +696,15 @@
 
 (defn parse-paragraph! [stream ctx]
   (let [begin-pos (in/position stream)
-        make-token (fn [lines] (t/stream->token stream begin-pos)) ; TODO(Richo): lines are not needed!
         make-paragraph (fn [lines]
                          (t/with-token (apply doc/paragraph (apply concat lines))
-                           (make-token lines)))
+                           (t/stream->token stream begin-pos)))
         make-heading (fn [level lines]
                        (t/with-token (apply doc/heading level
                                             (->> lines
                                                  (interpose [(doc/soft-break)])
                                                  (apply concat)))
-                         (make-token lines)))]
+                         (t/stream->token stream begin-pos)))]
     (loop [lines (transient [])]
       (if (and (> (count lines) 0)
                (not (peek-line-prefix stream ctx)))
@@ -968,7 +955,7 @@
            ctx (make-context eval-form)
            blocks (parse-blocks! stream ctx)]
        (t/with-token (apply doc/document blocks)
-         (t/make-token src 0 (count src)))))))
+         (t/stream->token stream 0))))))
 
 (defn parse-file [file options eval-form]
   (binding [*parser-file* (str file)]
@@ -978,6 +965,10 @@
   (do (def src "foo\\\r\nbar")
       (def stream (in/make-stream (lexer/tokenize src)))
       (def ctx (make-context nil)))
+
+  (def doc (parse "*foo*"))
+  (meta doc)
+  (meta (-> doc :blocks first :elements first))
 
   (parse-paragraph! stream ctx)
   (next-line! stream ctx)
