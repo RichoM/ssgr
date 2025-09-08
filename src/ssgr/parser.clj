@@ -425,6 +425,7 @@
      :text (str/join chars)
      :open? (can-open? prev-char next-char)
      :close? (can-close? prev-char next-char)
+     :start (:start token)
      :prev-char prev-char
      :next-char next-char}))
 
@@ -445,19 +446,22 @@
                                 {:type ::delimiter
                                  :text "!["
                                  :open? true
-                                 :close? false})
+                                 :close? false
+                                 :start begin-pos})
                             (do (in/reset-position! stream begin-pos)
                                 nil)))
                    \[ (do (in/skip! stream) ; Skip
                           {:type ::delimiter
                            :text "["
                            :open? true
-                           :close? false})
+                           :close? false
+                           :start begin-pos})
                    \] (do (in/skip! stream) ; Skip
                           {:type ::delimiter
                            :text "]"
                            :open? false
-                           :close? true})
+                           :close? true
+                           :start begin-pos})
                    nil))]
       delimiter)))
 
