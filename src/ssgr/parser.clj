@@ -779,6 +779,8 @@
   ; TODO(Richo): Instead of flattening each line and adding it to the lines
   ; vector, maybe we can just collect all the tokens and flatten them together
   ; at the end. That should be faster since it also avoids calling str/join
+  ; UPDATE 2025-09-06: We can't do that because we remove the first 4 spaces 
+  ; from each line, so it's probably better to do it like this, unfortunately.
   (let [begin-pos (in/position stream)
         lines (loop [lines (transient [])]
                 (let [line-begin (in/position stream)
