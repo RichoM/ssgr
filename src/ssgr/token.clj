@@ -29,6 +29,16 @@
            (println token)))
     token))
 
+(defn lexer-tokens->token [lexer-tokens]
+  (let [first-token (first lexer-tokens)
+        last-token (peek lexer-tokens)
+        start (:start first-token)
+        end (+ (:start last-token)
+               (:count last-token))]
+    (make-token (:src first-token)
+                start
+                (- end start))))
+
 (defn stream->token
   "Utility function to make a token from the current position of a stream"
   ([stream begin-pos]
@@ -36,9 +46,11 @@
                   begin-pos
                   (in/position stream)))
   ([stream ^long begin-pos ^long end-pos]
-   (make-token (in/source stream)
-               begin-pos
-               (- end-pos begin-pos))))
+   (when (> end-pos begin-pos)
+     (let [tokens (subvec (in/source stream)
+                          begin-pos end-pos)]
+       (lexer-tokens->token tokens)))))
+
 
 (defn merge-tokens [nodes]
   (let [tokens (vec (keep #(-> % meta :token) nodes))]

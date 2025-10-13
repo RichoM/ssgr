@@ -1,11 +1,13 @@
 (ns ssgr.parser
   (:refer-clojure :exclude [symbol?])
-  (:require [clojure.string :as str]
-            [ssgr.input-stream :as in]
-            [ssgr.lexer :as lexer]
-            [ssgr.clojure :as c :refer [*verbose-eval*]]
-            [ssgr.token :as t :refer [*debug-verbose-tokens* *parser-file*]]
-            [ssgr.doc :as doc]))
+  (:require
+   [clojure.string :as str]
+   [clojure.walk :as w]
+   [ssgr.clojure :as c :refer [*verbose-eval*]]
+   [ssgr.doc :as doc]
+   [ssgr.input-stream :as in]
+   [ssgr.lexer :as lexer]
+   [ssgr.token :as t :refer [*debug-verbose-tokens* *parser-file*]]))
 
 ; (require 'hashp.preload)
 
@@ -418,14 +420,15 @@
 (defn parse-emph-delimiter! [stream token char]
   (let [prev-char (or (lexer/prev-char token)
                       \space)
-        chars (mapv :char (in/take-while! stream (fn [t] (= char (:char t)))))
+        tokens (in/take-while! stream (fn [t] (= char (:char t))))
+        chars (mapv :char tokens)
         next-char (or (:char (in/peek stream)) 
                       \space)]
     {:type ::delimiter
      :text (str/join chars)
      :open? (can-open? prev-char next-char)
      :close? (can-close? prev-char next-char)
-     :start (:start token)
+     :tokens (vec tokens)
      :prev-char prev-char
      :next-char next-char}))
 
@@ -442,12 +445,11 @@
                    \_ (parse-emph-delimiter! stream token \_)
                    \! (do (in/skip! stream) ; Skip
                           (if (= \[ (:char (in/peek stream)))
-                            (do (in/skip! stream) ; Skip
-                                {:type ::delimiter
-                                 :text "!["
-                                 :open? true
-                                 :close? false
-                                 :start begin-pos})
+                            {:type ::delimiter
+                             :text "!["
+                             :open? true
+                             :close? false
+                             :tokens [token (in/skip! stream)]}
                             (do (in/reset-position! stream begin-pos)
                                 nil)))
                    \[ (do (in/skip! stream) ; Skip
@@ -455,13 +457,13 @@
                            :text "["
                            :open? true
                            :close? false
-                           :start begin-pos})
+                           :tokens [token]})
                    \] (do (in/skip! stream) ; Skip
                           {:type ::delimiter
                            :text "]"
                            :open? false
                            :close? true
-                           :start begin-pos})
+                           :tokens [token]})
                    nil))]
       delimiter)))
 
@@ -569,12 +571,14 @@
                               2 1)
                  [new-open open] (split-delimiter-at open (- open-count emph-count))
                  [close new-close] (split-delimiter-at close emph-count)
+                 token (let [first-token (first (:tokens open))
+                             last-token (peek (:tokens close))]
+                         (t/lexer-tokens->token [first-token last-token]))
                  emph (t/with-token (apply (if (= 2 emph-count)
                                              doc/strong-emphasis
                                              doc/emphasis)
                                            (ensure-no-delimiter-left-behind content))
-                        nil
-                        #_(t/merge-tokens [open content close]))
+                        token)
                  pre (subvec inlines
                              0
                              (min opener-idx (count inlines)))
@@ -602,6 +606,17 @@
            (recur (count inlines)
                   (count inlines)
                   inlines)))))))
+
+(comment
+  
+  (parse "     ")
+  (def doc (parse "*abc*"))
+
+  (-> doc ;:blocks first ;:elements first
+      meta :token )
+  
+  )
+
 
 (defn- look-for-link-or-image! [stream inlines close-delimiter]
   (let [begin-pos (in/position stream)
@@ -960,8 +975,23 @@
      (let [stream (in/make-stream (lexer/tokenize src))
            ctx (make-context eval-form)
            blocks (parse-blocks! stream ctx)]
-       (t/with-token (apply doc/document blocks)
-         (t/stream->token stream 0))))))
+       (let [result (t/with-token (apply doc/document blocks)
+                      (t/stream->token stream 0))
+             missing-tokens (volatile! #{})]
+         ; TODO(Richo): This code is just for testing!!!
+         (w/prewalk (fn [f]
+                     (when (and (map? f)
+                                (some? (:type f)))
+                       (when-not (-> f meta :token)
+                         (vswap! missing-tokens conj (:type f))
+                         #_(throw (ex-info (str "Missing token! "
+                                              (:type f)) 
+                                         {:element f}))))
+                      f)
+                   result)
+         (when (seq @missing-tokens)
+           (println "Missing tokens:" @missing-tokens))
+         result)))))
 
 (defn parse-file [file options eval-form]
   (binding [*parser-file* (str file)]
@@ -972,7 +1002,10 @@
       (def stream (in/make-stream (lexer/tokenize src)))
       (def ctx (make-context nil)))
 
-  (def doc (parse "*foo*"))
+  (parse "# Richo capo
+Texto normal. \\
+`Código`" {:debug true})
+  (tap> *1)
   (meta doc)
   (meta (-> doc :blocks first :elements first))
 
