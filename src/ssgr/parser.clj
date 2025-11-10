@@ -608,13 +608,15 @@
                   inlines)))))))
 
 (comment
-  
+  (in/peek stream)
   (parse "     ")
   (def doc (parse "*abc*"))
 
   (-> doc ;:blocks first ;:elements first
       meta :token )
   
+  (in/position stream)
+  (in/source stream)
   )
 
 
@@ -641,9 +643,7 @@
                                                   link-destination)
                                         (apply doc/image link-destination
                                                (process-emphasis after)))
-                          nil
-                          #_(t/stream->token stream
-                                           (-> open-delimiter meta :token t/start))))))
+                          (t/stream->token stream idx)))))
             (do (in/reset-position! stream begin-pos)
                 (-> inlines
                     (update idx delimiter->text)
@@ -652,6 +652,12 @@
               (update idx delimiter->text)
               (conj (delimiter->text close-delimiter)))))
       (conj inlines (delimiter->text close-delimiter)))))
+
+(comment
+  
+  (t/input-value (t/stream->token stream idx))
+  
+  )
 
 (defn parse-inlines! [stream ctx & {:keys [multiline?] :or {multiline? true}}]
   (loop [inlines []
@@ -965,33 +971,37 @@
    :eval-form eval-form
    :line-parser-cache (volatile! {})})
 
+(defn parse* [src options eval-form]
+ (binding [*debug-verbose-emphasis* (:debug options)
+           *debug-verbose-tokens* (:debug options)
+           *verbose-eval* (:verbose options)]
+   (let [stream (in/make-stream (lexer/tokenize src))
+         ctx (make-context eval-form)
+         blocks (parse-blocks! stream ctx)]
+     (let [result (t/with-token (apply doc/document blocks)
+                    (t/stream->token stream 0))
+           missing-tokens (volatile! #{})]
+         ; TODO(Richo): This code is just for testing!!!
+       (w/prewalk (fn [f]
+                    (when (and (map? f)
+                               (some? (:type f)))
+                      (when-not (-> f meta :token)
+                        (vswap! missing-tokens conj (:type f))
+                        #_(throw (ex-info (str "Missing token! "
+                                               (:type f))
+                                          {:element f}))))
+                    f)
+                  result)
+       #_(when (seq @missing-tokens)
+         (println "Missing tokens:" @missing-tokens))
+       [result @missing-tokens]))))
+
 (defn parse
   ([src] (parse src {}))
   ([src options] (parse src options nil))
   ([src options eval-form]
-   (binding [*debug-verbose-emphasis* (:debug options)
-             *debug-verbose-tokens* (:debug options)
-             *verbose-eval* (:verbose options)]
-     (let [stream (in/make-stream (lexer/tokenize src))
-           ctx (make-context eval-form)
-           blocks (parse-blocks! stream ctx)]
-       (let [result (t/with-token (apply doc/document blocks)
-                      (t/stream->token stream 0))
-             missing-tokens (volatile! #{})]
-         ; TODO(Richo): This code is just for testing!!!
-         (w/prewalk (fn [f]
-                     (when (and (map? f)
-                                (some? (:type f)))
-                       (when-not (-> f meta :token)
-                         (vswap! missing-tokens conj (:type f))
-                         #_(throw (ex-info (str "Missing token! "
-                                              (:type f)) 
-                                         {:element f}))))
-                      f)
-                   result)
-         (when (seq @missing-tokens)
-           (println "Missing tokens:" @missing-tokens))
-         result)))))
+   (let [[result _] (parse* src options eval-form)]
+     result)))
 
 (defn parse-file [file options eval-form]
   (binding [*parser-file* (str file)]
@@ -1002,9 +1012,7 @@
       (def stream (in/make-stream (lexer/tokenize src)))
       (def ctx (make-context nil)))
 
-  (parse "# Richo capo
-Texto normal. \\
-`Código`" {:debug true})
+  (parse "[li\\nk](url)" {:debug true})
   (tap> *1)
   (meta doc)
   (meta (-> doc :blocks first :elements first))

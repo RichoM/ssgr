@@ -5,8 +5,57 @@
             [ssgr.eval :as e]
             [ssgr.parser :as p]
             [ssgr.doc :as d]
+            [ssgr.token :as t]
             [hiccup.compiler :as h.c]
-            [clojure.string :as str]))
+            [clojure.string :as str]
+            [clojure.test :as test]
+            [clojure.walk :as w]
+            [clojure.data :refer [diff]]))
+
+(defn parse* [src]
+  (p/parse* src {} e/eval-form))
+
+(defn find-first [type nodes]
+  (let [result (volatile! nil)]
+    (w/prewalk (fn [node]
+                 (if (= type (:type node))
+                   (do (vreset! result node)
+                       nil)
+                   node))
+               nodes)
+    @result))
+
+(defn valid-token? [node token]
+  (let [token-parsed (parse* (t/input-value token))
+        expected node
+        actual (find-first (:type expected) token-parsed)]
+    (= expected actual)))
+
+(def excepted-types #{:ssgr.doc/soft-break})
+
+(defn assert-valid-tokens [result]
+  (w/prewalk (fn [node]
+               (when (and (map? node)
+                          (not (excepted-types (:type node))))
+                 (when-let [token (-> node meta :token)]
+                   (is (valid-token? node token)
+                       (str "Invalid token '" (t/input-value token)
+                            "' for node of type " (:type node)))))
+               node)
+             result))
+
+(defn parse [src]
+  (let [[result missing-tokens] (parse* src)]
+    (is (empty? missing-tokens))
+    (when (empty? missing-tokens)
+      (assert-valid-tokens result))
+    result))
+
+(defn tparse [src]
+  (let [result (parse src)]
+    (tap> result)
+    result))
+
 
 (deftest blank-line
   (let [blank? #(= {:type :ssgr.parser/blank}
@@ -19,8 +68,7 @@
     (is (not (blank? "  asdf\n")))
     (is (not (blank? "    asdf\n")))))
 
-(defn parse [src]
-  (p/parse src {} e/eval-form))
+
 
 (deftest regular-text
   (is (= (parse "Texto normal")
@@ -234,23 +282,23 @@
            (d/text " capo"))))))
 
 (deftest link
-  (is (= (parse "[test](http://url.com)")
+  (is (= (tparse "[test](http://url.com)")
          (d/document
           (d/paragraph
            (d/link [(d/text "test")] "http://url.com")))))
-  (is (= (parse "[link con `código` adentro](http://url.com)")
+  (is (= (tparse "[link con `código` adentro](http://url.com)")
          (d/document
           (d/paragraph
            (d/link [(d/text "link con ")
                     (d/code-span "código")
                     (d/text " adentro")]
                    "http://url.com")))))
-  (is (= (parse "Probando un texto con un link en la misma línea: [test](http://url.com)")
+  (is (= (tparse "Probando un texto con un link en la misma línea: [test](http://url.com)")
          (d/document
           (d/paragraph
            (d/text "Probando un texto con un link en la misma línea: ")
            (d/link [(d/text "test")] "http://url.com")))))
-  (is (= (parse "# Link in heading [test](http://url.com) #######")
+  (is (= (tparse "# Link in heading [test](http://url.com) #######")
          (d/document
           (d/heading
            1
@@ -429,7 +477,7 @@
                        (d/text "bar"))))))
 
 (deftest link-with-other-link-inside
-  (is (= (parse "[link con [otro link](url2) adentro](url)")
+  (is (= (tparse "[link con [otro link](url2) adentro](url)")
          (d/document
           (d/paragraph (d/text "[")
                        (d/text "link con ")
@@ -605,8 +653,8 @@
                        (d/text "foo bar ")
                        (d/text "_"))))
       "Example 371")
-  (is (= (parse "_(_foo)")
-         (d/document 
+  (is (= (tparse "_(_foo)")
+         (d/document
           (d/paragraph (d/text "_")
                        (d/text "(")
                        (d/text "_")
@@ -695,7 +743,7 @@
           (d/ordered-list
            1
            (d/list-item (d/paragraph (d/text "item one")))
-           (d/list-item 
+           (d/list-item
             (d/paragraph (d/text "item two"))
             (d/bullet-list
              (d/list-item (d/paragraph (d/text "sublist")
@@ -705,7 +753,7 @@
              (d/list-item (d/paragraph (d/text "sublist")))))))))
   ; NOTE(Richo): This text should parse the same as before, the only difference is that the blank
   ; line between paragraphs also contains the exact number of spaces to be part of the list item
-  (is (= (parse "1. item one\n2. item two\n   - sublist\n     que continúa en la siguiente línea.\n     \n     Y que además tiene otro párrafo.\n   - sublist")
+  (is (= (tparse "1. item one\n2. item two\n   - sublist\n     que continúa en la siguiente línea.\n     \n     Y que además tiene otro párrafo.\n   - sublist")
          (d/document
           (d/ordered-list
            1
@@ -725,9 +773,9 @@
            (d/list-item
             (d/paragraph (d/text "item one"))
             (d/bullet-list
-             (d/list-item 
+             (d/list-item
               (d/paragraph (d/text "sublist"))
-              (d/bullet-list 
+              (d/bullet-list
                (d/list-item (d/paragraph (d/text "sub sub list")))))
              (d/list-item
               (d/paragraph (d/text "sublist"))))))))))
@@ -948,16 +996,14 @@ AB.
               (d/paragraph (d/text "text"))
               (d/code-block "" "code")))))))
 
-(comment 
+(comment
 
-(def src "1. text\n\n       code")
+  (def src "1. text\n\n       code")
 
   (parse "    code")
   (d/pretty-print (parse src))
   (d/pretty-print *1)
-  (tap> *1)
-
-)
+  (tap> *1))
 
 (comment
  ;  <paragraph>
@@ -973,12 +1019,9 @@ AB.
 
   (parse " adentro](url)")
   (parse "[link con [otro link](url2) adentro](url)")
-  
+
   (tap> *1)
 
   (def test (atom 42))
   (loop [] (when (pos? @test) (swap! test dec) (recur)))
-  @test
-
-
-  )
+  @test)
