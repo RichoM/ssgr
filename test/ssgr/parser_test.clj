@@ -13,7 +13,7 @@
             [clojure.data :refer [diff]]))
 
 (defn parse* [src]
-  (p/parse* src {} e/eval-form))
+  (p/parse src {} e/eval-form))
 
 (defn find-first [type nodes]
   (let [result (volatile! nil)]
@@ -44,8 +44,20 @@
                node)
              result))
 
+(defn find-missing-tokens [result]
+  (let [missing-tokens (volatile! #{})]
+    (w/prewalk (fn [f]
+                 (when (and (map? f)
+                            (some? (:type f)))
+                   (when-not (-> f meta :token)
+                     (vswap! missing-tokens conj (:type f))))
+                 f)
+               result)
+    @missing-tokens))
+
 (defn parse [src]
-  (let [[result missing-tokens] (parse* src)]
+  (let [result (parse* src)
+        missing-tokens (find-missing-tokens result)]
     (is (empty? missing-tokens))
     (when (empty? missing-tokens)
       (assert-valid-tokens result))
@@ -282,23 +294,23 @@
            (d/text " capo"))))))
 
 (deftest link
-  (is (= (tparse "[test](http://url.com)")
+  (is (= (parse "[test](http://url.com)")
          (d/document
           (d/paragraph
            (d/link [(d/text "test")] "http://url.com")))))
-  (is (= (tparse "[link con `código` adentro](http://url.com)")
+  (is (= (parse "[link con `código` adentro](http://url.com)")
          (d/document
           (d/paragraph
            (d/link [(d/text "link con ")
                     (d/code-span "código")
                     (d/text " adentro")]
                    "http://url.com")))))
-  (is (= (tparse "Probando un texto con un link en la misma línea: [test](http://url.com)")
+  (is (= (parse "Probando un texto con un link en la misma línea: [test](http://url.com)")
          (d/document
           (d/paragraph
            (d/text "Probando un texto con un link en la misma línea: ")
            (d/link [(d/text "test")] "http://url.com")))))
-  (is (= (tparse "# Link in heading [test](http://url.com) #######")
+  (is (= (parse "# Link in heading [test](http://url.com) #######")
          (d/document
           (d/heading
            1
@@ -477,7 +489,7 @@
                        (d/text "bar"))))))
 
 (deftest link-with-other-link-inside
-  (is (= (tparse "[link con [otro link](url2) adentro](url)")
+  (is (= (parse "[link con [otro link](url2) adentro](url)")
          (d/document
           (d/paragraph (d/text "[")
                        (d/text "link con ")
@@ -653,7 +665,7 @@
                        (d/text "foo bar ")
                        (d/text "_"))))
       "Example 371")
-  (is (= (tparse "_(_foo)")
+  (is (= (parse "_(_foo)")
          (d/document
           (d/paragraph (d/text "_")
                        (d/text "(")
@@ -753,7 +765,7 @@
              (d/list-item (d/paragraph (d/text "sublist")))))))))
   ; NOTE(Richo): This text should parse the same as before, the only difference is that the blank
   ; line between paragraphs also contains the exact number of spaces to be part of the list item
-  (is (= (tparse "1. item one\n2. item two\n   - sublist\n     que continúa en la siguiente línea.\n     \n     Y que además tiene otro párrafo.\n   - sublist")
+  (is (= (parse "1. item one\n2. item two\n   - sublist\n     que continúa en la siguiente línea.\n     \n     Y que además tiene otro párrafo.\n   - sublist")
          (d/document
           (d/ordered-list
            1

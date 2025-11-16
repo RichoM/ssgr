@@ -971,37 +971,18 @@
    :eval-form eval-form
    :line-parser-cache (volatile! {})})
 
-(defn parse* [src options eval-form]
- (binding [*debug-verbose-emphasis* (:debug options)
-           *debug-verbose-tokens* (:debug options)
-           *verbose-eval* (:verbose options)]
-   (let [stream (in/make-stream (lexer/tokenize src))
-         ctx (make-context eval-form)
-         blocks (parse-blocks! stream ctx)]
-     (let [result (t/with-token (apply doc/document blocks)
-                    (t/stream->token stream 0))
-           missing-tokens (volatile! #{})]
-         ; TODO(Richo): This code is just for testing!!!
-       (w/prewalk (fn [f]
-                    (when (and (map? f)
-                               (some? (:type f)))
-                      (when-not (-> f meta :token)
-                        (vswap! missing-tokens conj (:type f))
-                        #_(throw (ex-info (str "Missing token! "
-                                               (:type f))
-                                          {:element f}))))
-                    f)
-                  result)
-       #_(when (seq @missing-tokens)
-         (println "Missing tokens:" @missing-tokens))
-       [result @missing-tokens]))))
-
 (defn parse
   ([src] (parse src {}))
   ([src options] (parse src options nil))
   ([src options eval-form]
-   (let [[result _] (parse* src options eval-form)]
-     result)))
+   (binding [*debug-verbose-emphasis* (:debug options)
+             *debug-verbose-tokens* (:debug options)
+             *verbose-eval* (:verbose options)]
+     (let [stream (in/make-stream (lexer/tokenize src))
+           ctx (make-context eval-form)
+           blocks (parse-blocks! stream ctx)]
+       (t/with-token (apply doc/document blocks)
+         (t/stream->token stream 0))))))
 
 (defn parse-file [file options eval-form]
   (binding [*parser-file* (str file)]
