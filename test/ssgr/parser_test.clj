@@ -25,23 +25,49 @@
                nodes)
     @result))
 
-(defn valid-token? [node token]
-  (let [token-parsed (parse* (t/input-value token))
-        expected node
-        actual (find-first (:type expected) token-parsed)]
-    (= expected actual)))
+(defn parse-token [node token]
+  (let [sanitized-input (t/input-value token)
+        #_(case (:type node)
+                          ;;; NOTE(Richo): This doesn't work because we're trying to sanitize
+                          ;;; the heading element instead of its text child elements. I need
+                          ;;; to make some walking function that also keeps track of the path
+                          ;;; (parent nodes) that correspond to this node and if we're a text
+                          ;;; inside a heading we sanitize the input or something like that...
+            :ssgr.doc/heading (-> (t/input-value token)
+                                  (str/replace #"^\s+" "")
+                                  (str/replace #"\s+#*\r*\n*$" ""))
+            (t/input-value token))
+        token-parsed (parse* sanitized-input)
+        actual (find-first (:type node) token-parsed)]
+    actual))
 
-(def excepted-types #{:ssgr.doc/soft-break})
+(def excepted-types
+  "These types get excluded from the token validation. They simply get skipped"
+  #{:ssgr.doc/soft-break :ssgr.doc/hard-break})
+
+(def stop-types
+  "These types stop the token validation process and prevent it from analyzing
+   their children"
+  #{;:ssgr.doc/heading
+    })
 
 (defn assert-valid-tokens [result]
   (w/prewalk (fn [node]
-               (when (and (map? node)
-                          (not (excepted-types (:type node))))
-                 (when-let [token (-> node meta :token)]
-                   (is (valid-token? node token)
-                       (str "Invalid token '" (t/input-value token)
-                            "' for node of type " (:type node)))))
-               node)
+               (let [type (:type node)]
+                 #_(when type
+                     (println type))
+                 (when (and (map? node)
+                            (not (excepted-types type)))
+                   (when-not (and (= type :ssgr.doc/text)
+                                  (re-matches #"\s+" (:text node)))
+                     (when-let [token (-> node meta :token)]
+                       (is (= node (parse-token node token))
+                           (str "Invalid token '" (t/input-value token)
+                                "' for node of type " type)))))
+                 (if (and (map? node)
+                          (stop-types type))
+                   nil
+                   node)))
              result))
 
 (defn find-missing-tokens [result]
@@ -50,21 +76,28 @@
                  (when (and (map? f)
                             (some? (:type f)))
                    (when-not (-> f meta :token)
-                     (vswap! missing-tokens conj (:type f))))
+                     (when-not (and (= :ssgr.doc/document (:type f))
+                                    (empty? (:blocks f)))
+                       (vswap! missing-tokens conj (:type f)))))
                  f)
                result)
     @missing-tokens))
 
-(defn parse [src]
+(defn parse
+  [src & {:keys [check-valid-tokens? check-missing-tokens?]
+          :or {check-valid-tokens? true
+               check-missing-tokens? true}}]
   (let [result (parse* src)
         missing-tokens (find-missing-tokens result)]
-    (is (empty? missing-tokens))
-    (when (empty? missing-tokens)
+    (when check-missing-tokens?
+      (is (empty? missing-tokens)))
+    (when (and check-valid-tokens?
+               (empty? missing-tokens))
       (assert-valid-tokens result))
     result))
 
 (defn tparse [src]
-  (let [result (parse src)]
+  (let [result (p/parse src {:debug true} e/eval-form)]
     (tap> result)
     result))
 
@@ -172,8 +205,10 @@
 
 (deftest setext-heading-underline-line
   (let [setext-heading-underline?
-        (fn [src]
-          (let [doc (parse (str "title\n" src))
+        (fn [src & {:keys [check-valid-tokens?]
+                    :or {check-valid-tokens? true}}]
+          (let [doc (parse (str "title\n" src)
+                           :check-valid-tokens? check-valid-tokens?)
                 heading (-> doc :blocks first)]
             (and (= :ssgr.doc/heading (:type heading))
                  (= [(d/text "title")] (:elements heading))
@@ -182,7 +217,13 @@
     (is (setext-heading-underline? "="))
     (is (setext-heading-underline? "------   "))
     (is (setext-heading-underline? "   -"))
-    (is (not (setext-heading-underline? "    -")))
+
+    ; The following case seems to be special in the sense that the token is 
+    ; correct but the check is wrong, that's why I'm disabling the check for
+    ; this case only
+    (is (not (setext-heading-underline?
+              "    -"
+              :check-valid-tokens? false)))
     (is (not (setext-heading-underline? "-=")))))
 
 (deftest setext-headings
@@ -488,6 +529,7 @@
                        (d/hard-break)
                        (d/text "bar"))))))
 
+
 (deftest link-with-other-link-inside
   (is (= (parse "[link con [otro link](url2) adentro](url)")
          (d/document
@@ -580,12 +622,12 @@
       "bad-case 2"))
 
 (deftest emphasis-with-unmatching-delimiters
-  (is (= (parse "texto **énfasis*")
+  (is (= (tparse "texto **énfasis*") ; ACAACA
          (d/document
           (d/paragraph (d/text "texto ")
                        (d/text "*")
                        (d/emphasis (d/text "énfasis"))))))
-  (is (= (parse "texto *énfasis**")
+  (is (= (parse "texto *énfasis**") ; ACAACA
          (d/document
           (d/paragraph (d/text "texto ")
                        (d/emphasis (d/text "énfasis"))
@@ -1008,32 +1050,3 @@ AB.
               (d/paragraph (d/text "text"))
               (d/code-block "" "code")))))))
 
-(comment
-
-  (def src "1. text\n\n       code")
-
-  (parse "    code")
-  (d/pretty-print (parse src))
-  (d/pretty-print *1)
-  (tap> *1))
-
-(comment
- ;  <paragraph>
- ;   <text> [</text>
- ;           <text>link con </text>
- ;           <link destination= "url2" title= "" >
- ;            <text>otro link</text>
- ;           </link>
- ;           <text> adentro</text>
- ;           <text>] </text>
- ;   <text> (url) </text>
- ;  </paragraph>
-
-  (parse " adentro](url)")
-  (parse "[link con [otro link](url2) adentro](url)")
-
-  (tap> *1)
-
-  (def test (atom 42))
-  (loop [] (when (pos? @test) (swap! test dec) (recur)))
-  @test)

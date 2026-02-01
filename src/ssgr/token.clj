@@ -29,6 +29,20 @@
            (println token)))
     token))
 
+(defn remove-leading [token n]
+  (when token
+    (-> token
+        (update :start + n)
+        (update :count - n)
+        (assoc-input-value))))
+
+(defn remove-trailing [token n]
+  (when token
+    (-> token
+        (update :count - n)
+        (assoc-input-value))))
+
+
 (defn lexer-tokens->token [lexer-tokens]
   (let [first-token (first lexer-tokens)
         last-token (peek lexer-tokens)

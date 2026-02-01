@@ -312,8 +312,9 @@
                              text)))
           token)
         (do (in/reset-position! stream begin-content)
-            ; TODO(Richo): Text element without token??
-            (doc/text (str/join (mapv :char opening))))))))
+            (t/with-token 
+              (doc/text (str/join (mapv :char opening)))
+              (t/stream->token stream begin-pos)))))))
 
 (declare parse-inlines!)
 
@@ -483,7 +484,10 @@
       -1)))
 
 (defn delimiter->text [delimiter]
-  (doc/text (:text delimiter)))
+  (if (= ::delimiter  (:type delimiter))
+    (t/with-token (doc/text (:text delimiter))
+      (t/lexer-tokens->token (:tokens delimiter)))
+    delimiter))
 
 (defn- ensure-no-delimiter-left-behind [inlines] ; TODO(Richo): This shouldn't be necessary!
   (->> inlines
@@ -607,19 +611,6 @@
                   (count inlines)
                   inlines)))))))
 
-(comment
-  (in/peek stream)
-  (parse "     ")
-  (def doc (parse "*abc*"))
-
-  (-> doc ;:blocks first ;:elements first
-      meta :token )
-  
-  (in/position stream)
-  (in/source stream)
-  )
-
-
 (defn- look-for-link-or-image! [stream inlines close-delimiter]
   (let [begin-pos (in/position stream)
         idx (find-last-index inlines (comp #{"[" "!["} :text))]
@@ -653,12 +644,6 @@
               (conj (delimiter->text close-delimiter)))))
       (conj inlines (delimiter->text close-delimiter)))))
 
-(comment
-  
-  (t/input-value (t/stream->token stream idx))
-  
-  )
-
 (defn parse-inlines! [stream ctx & {:keys [multiline?] :or {multiline? true}}]
   (loop [inlines []
          inline-text nil]
@@ -681,7 +666,10 @@
                                 (-> inlines
                                     (condj (when-let [text (close-text inline-text)] ; TODO(Richo): This sucks!
                                              (when (> (count (:text text)) spaces)
-                                               (update text :text #(subs % 0 (- (count %) spaces))))))
+                                               ; NOTE(Richo): Update the text but also update the token!!
+                                               (-> text
+                                                   (update :text #(subs % 0 (- (count %) spaces)))
+                                                   (vary-meta update :token t/remove-trailing spaces)))))
                                     (condj (t/with-token (if (>= spaces 2)
                                                            (doc/hard-break)
                                                            (doc/soft-break))
@@ -987,19 +975,3 @@
 (defn parse-file [file options eval-form]
   (binding [*parser-file* (str file)]
     (parse (slurp file) options eval-form)))
-
-(comment
-  (do (def src "foo\\\r\nbar")
-      (def stream (in/make-stream (lexer/tokenize src)))
-      (def ctx (make-context nil)))
-
-  (parse "[li\\nk](url)" {:debug true})
-  (tap> *1)
-  (meta doc)
-  (meta (-> doc :blocks first :elements first))
-
-  (parse-paragraph! stream ctx)
-  (next-line! stream ctx)
-  (peek-line stream ctx)
-
-  )
