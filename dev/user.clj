@@ -4,7 +4,7 @@
 (def !portal (atom nil))
 
 (defn open-portal! []
-  (reset! !portal (p/open {:launcher :vs-code}))
+  (reset! !portal (p/open ))
   (add-tap #'p/submit))
 
 (defn close-portal! []
