@@ -15,7 +15,7 @@
                                   [org.clojars.beppu/clj-audio "0.3.0"]
                                   [criterium "0.4.6"]
                                   [com.taoensso/tufte "2.7.0"]
-                                  [djblue/portal "0.59.1"]
+                                  [djblue/portal "0.62.2"]
                                   [dev.weavejester/hashp "0.4.0"]
                                   [com.clojure-goes-fast/clj-async-profiler "1.6.2"]]
                    :injections [(require 'hashp.preload)]
