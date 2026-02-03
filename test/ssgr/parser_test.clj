@@ -622,7 +622,7 @@
       "bad-case 2"))
 
 (deftest emphasis-with-unmatching-delimiters
-  (is (= (tparse "texto **énfasis*") ; ACAACA
+  (is (= (parse "texto **énfasis*") ; ACAACA
          (d/document
           (d/paragraph (d/text "texto ")
                        (d/text "*")

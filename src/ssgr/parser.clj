@@ -469,11 +469,15 @@
       delimiter)))
 
 (defn split-delimiter-at
-  [{:keys [text] :as delimiter} ^long n]
-  (let [l-text (subs text 0 n)
-        r-text (subs text n)]
-    [(assoc delimiter :text l-text)
-     (assoc delimiter :text r-text)]))
+  [{:keys [text tokens] :as delimiter} ^long n]
+  (assert (= ::delimiter (:type delimiter))
+          "Invalid delimiter!") 
+  [(assoc delimiter
+          :text (subs text 0 n)
+          :tokens (subvec tokens 0 n))
+   (assoc delimiter
+          :text (subs text n)
+          :tokens (subvec tokens n))])
 
 (defn- find-last-index ^long [items pred]
   (loop [idx (dec (count items))]
