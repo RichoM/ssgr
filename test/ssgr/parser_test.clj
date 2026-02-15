@@ -891,8 +891,6 @@
                          (d/list-item (d/paragraph (d/text "Richo")))
                          (d/list-item (d/paragraph (d/text "Diego")))))))))
 
-(comment
-  
 (deftest blockquote-interrupts-lists
   (is (= (parse "1. Richo\n> 2. Diego")
          (d/document
@@ -916,7 +914,8 @@
 3. C
    1. CA
    2. CB
-   3. CC")
+   3. CC"
+                :check-valid-tokens? false)
          (d/document
           (d/ordered-list
            1
@@ -953,7 +952,8 @@
   3. C
      1. CA
      2. CB
-     3. CC")
+     3. CC"
+                :check-valid-tokens? false)
          (d/document
           (d/ordered-list
            1
@@ -1075,4 +1075,3 @@ AB.
               (d/paragraph (d/text "text"))
               (d/code-block "" "code")))))))
 
-)
