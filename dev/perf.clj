@@ -53,12 +53,18 @@
          (count html))))))
   
 (comment
-  (benchmark-parse true)
+  (benchmark-parse false)
   (benchmark-render true)
 
-  ; Time per call: 11,02 ms   Alloc per call: 9.146.703b   Iterations: 2737
-  ; Time per call: 11,06 ms   Alloc per call: 9.146.816b   Iterations: 2773
-  ; Time per call: 10,96 ms   Alloc per call: 9.146.816b   Iterations: 2813
+  ; Parsing in CLJMD mode...
+  ; Time per call: 9.17 ms   Alloc per call: 53,185,700b   Iterations: 3277
+  ; Time per call: 9.04 ms   Alloc per call: 53,180,058b   Iterations: 3477
+  ; Time per call: 9.10 ms   Alloc per call: 53,180,208b   Iterations: 3411
+  
+  ; Parsing in MD mode...
+  ; Time per call: 4.58 ms   Alloc per call: 13,430,412b   Iterations: 6799
+  ; Time per call: 4.54 ms   Alloc per call: 13,430,344b   Iterations: 6841
+  ; Time per call: 4.54 ms   Alloc per call: 13,430,344b   Iterations: 6626
   
   (profile true)
 
