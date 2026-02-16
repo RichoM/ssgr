@@ -9,6 +9,9 @@
    [ssgr.lexer :as lexer]
    [ssgr.token :as t :refer [*debug-verbose-tokens* *parser-file*]]))
 
+(set! *warn-on-reflection* true)
+(set! *unchecked-math* :warn-on-boxed)
+
 ; (require 'hashp.preload)
 
 (def ^:dynamic *debug-verbose-emphasis* false)
@@ -661,7 +664,7 @@
              (append-next! nil stream))
 
       :else (let [^long begin-pos (in/position stream)]
-              (if-let [[spaces backslash] (parse-line-breaks! stream)]
+              (if-let [[^long spaces backslash] (parse-line-breaks! stream)]
                 (let [token (t/stream->token stream begin-pos)
                       inlines (if backslash
                                 (-> inlines
