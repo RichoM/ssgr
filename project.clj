@@ -10,15 +10,17 @@
                  [org.clojure/tools.cli "1.1.230"]]
   :main ssgr.core
   :target-path "target/%s"
+  :java-source-paths ["src"]
   :profiles {:dev {:dependencies [[org.clojure/core.async "0.6.532"]
                                   [org.clojars.beppu/clj-audio "0.3.0"]
                                   [criterium "0.4.6"]
                                   [com.taoensso/tufte "2.7.0"]
-                                  [djblue/portal "0.59.1"]
+                                  [djblue/portal "0.62.2"]
                                   [dev.weavejester/hashp "0.4.0"]
                                   [com.clojure-goes-fast/clj-async-profiler "1.6.2"]]
                    :injections [(require 'hashp.preload)]
                    :resource-paths ["sounds"]
+                   :source-paths ["dev"]
                    :plugins [[com.jakemccrary/lein-test-refresh "0.24.1"]]
                    :global-vars {*unchecked-math* :warn-on-boxed
                                  *warn-on-reflection* true}

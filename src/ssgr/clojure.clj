@@ -4,7 +4,8 @@
             [ssgr.token :as t :refer [*parser-file*]]
             [edamame.core :as e]
             [hiccup.compiler :as h.c]
-            [ssgr.doc :as doc]))
+            [ssgr.doc :as doc]
+            [ssgr.lexer :as lexer]))
 
 (def ^:dynamic *verbose-eval* false)
 
@@ -24,14 +25,15 @@
              (inc line-count))
       line-idx)))
 
-(defn advance-stream-to-match! [stream reader source]
-  (let [^long line-number (e/get-line-number reader)
-        ^long column-number (e/get-column-number reader)
-        line-position (find-line-idx source line-number)
-        position (+ (in/position stream)
-                    line-position
-                    (dec column-number))]
-    (in/reset-position! stream position)))
+(defn advance-stream-to-match! [stream {:keys [^long line-number ^long column-number]} reader]
+  (let [expected-line-number (dec (+ line-number ^long (e/get-line-number reader)))
+        expected-column-number (dec (+ column-number ^long (e/get-column-number reader)))]
+    (loop []
+      (when-let [{:keys [^long line-number ^long column-number]} (in/peek stream)]
+        (when (or (< line-number expected-line-number)
+                  (< column-number expected-column-number))
+          (in/skip! stream)
+          (recur))))))
 
 (defn eval-clojure [form eval-form]
   (let [result (eval-form form)]
@@ -41,25 +43,42 @@
 
 (defn parse-clojure! [stream ctx]
   (when-let [eval-form (-> ctx :eval-form)]
-    (let [begin-pos (in/position stream)]
-      (when (#{\( \[} (in/peek stream))
+    (let [begin-pos (in/position stream)
+          first-token (in/peek stream)]
+      (when (#{\( \[} (:char first-token))
         (try
-          (let [src (subs (in/source stream) begin-pos)
+          (let [src (subs (:src first-token)
+                          (:start first-token))
                 reader (e/source-reader src)
                 form (e/parse-next reader (e/normalize-opts {:all true}))
                 result (eval-clojure form eval-form)]
-            (advance-stream-to-match! stream reader src)
+            (advance-stream-to-match! stream first-token reader)
             (t/with-token (doc/clojure form result)
-              (t/stream->token stream begin-pos nil)))
+              (t/stream->token stream begin-pos)))
           (catch Exception ex
             (when *verbose-eval*
-              (let [[line-number column-number]
-                    (find-line-col (in/source stream)
-                                   begin-pos)]
+              (let [{:keys [line-number column-number]} first-token]
                 (println "ERROR evaluating clojure code at"
                          *parser-file* (str "(Ln " line-number ", Col " column-number "):")
                          (ex-message ex))))
             (in/reset-position! stream begin-pos)))))))
+
+(comment
+  
+  (def stream (in/make-stream (ssgr.lexer/tokenize "(+ 3 4)\r\n(println 7)")))
+  (def stream (in/make-stream (ssgr.lexer/tokenize "Richo (+ 3 4) capo")))
+
+  (parse-clojure! stream {:eval-form identity})
+  (in/position stream)
+  (in/peek stream)
+  (in/next! stream)
+  
+  (def reader (e/source-reader "(+ 3 4)\r\n(println 7)"))
+  (e/parse-next reader (e/normalize-opts {:all true}))
+  (e/get-line-number reader)
+  (e/get-column-number reader)
+  
+  )
 
 (defn eval-file! [file options eval-form]
   (binding [*parser-file* (str file)

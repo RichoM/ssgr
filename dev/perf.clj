@@ -1,5 +1,6 @@
 (ns perf
-  (:require [babashka.fs :as fs]
+  (:require [ssgr.utils :as u]
+            [babashka.fs :as fs]
             [ssgr.parser :as p]
             [ssgr.eval :as e]
             [ssgr.renderer :as r]
@@ -8,7 +9,15 @@
 
 (def test-file "dev/perf.md")
 
-(defn benchmark-parse [cljmd?]
+(defn merge-test-files [input-path out-file]
+  (doseq [file (filter (fn [f]
+                         (#{"md" "cljmd"} (fs/extension f)))
+                       (u/list-files input-path))]
+    (let [contents (slurp file)]
+      (spit out-file contents :append true)
+      (spit out-file "\r\n\r\n" :append true))))
+  
+(defn benchmark-parse [cljmd?]  
   (let [src (slurp test-file)
         options {}
         eval-form (if cljmd? e/eval-form nil)]
@@ -42,24 +51,22 @@
              hiccup (r/render doc e/eval-render)
              html (r/html hiccup)]
          (count html))))))
-
+  
 (comment
   (benchmark-parse false)
   (benchmark-render true)
 
   ; Parsing in CLJMD mode...
-  ; Time per call: 41.94 ms   Alloc per call: 153,722,507b   Iterations: 736
-  ; Time per call: 41.60 ms   Alloc per call: 153,715,794b   Iterations: 743
-  ; Time per call: 41.86 ms   Alloc per call: 153,710,955b   Iterations: 737
-
-
+  ; Time per call: 9.17 ms   Alloc per call: 53,185,700b   Iterations: 3277
+  ; Time per call: 9.04 ms   Alloc per call: 53,180,058b   Iterations: 3477
+  ; Time per call: 9.10 ms   Alloc per call: 53,180,208b   Iterations: 3411
+  
   ; Parsing in MD mode...
-  ; Time per call: 27.92 ms   Alloc per call: 113,890,383b   Iterations: 1101
-  ; Time per call: 28.10 ms   Alloc per call: 113,890,312b   Iterations: 1072
-  ; Time per call: 28.21 ms   Alloc per call: 113,890,301b   Iterations: 1117
-
+  ; Time per call: 4.58 ms   Alloc per call: 13,430,412b   Iterations: 6799
+  ; Time per call: 4.54 ms   Alloc per call: 13,430,344b   Iterations: 6841
+  ; Time per call: 4.54 ms   Alloc per call: 13,430,344b   Iterations: 6626
+  
   (profile true)
-
 
   (prof/serve-ui 8080)
   )

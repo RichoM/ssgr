@@ -5,16 +5,14 @@
 (def ^:dynamic *debug-verbose-tokens* false)
 (def ^:dynamic *parser-file* nil)
 
-(defn make-token [source start count value]
+(defn make-token [source start count]
   {:source source
    :start start
-   :count count
-   :parsed-value value})
+   :count count})
 
 (defn source [token] (:source token))
 (defn start [token] (:start token))
 (defn count [token] (:count token))
-(defn parsed-value [token] (:parsed-value token))
 
 (defn stop [{:keys [^long start ^long count]}]
   (+ start count))
@@ -31,18 +29,42 @@
            (println token)))
     token))
 
+(defn remove-leading [token n]
+  (when token
+    (-> token
+        (update :start + n)
+        (update :count - n)
+        (assoc-input-value))))
+
+(defn remove-trailing [token n]
+  (when token
+    (-> token
+        (update :count - n)
+        (assoc-input-value))))
+
+
+(defn lexer-tokens->token [lexer-tokens]
+  (let [first-token (first lexer-tokens)
+        last-token (peek lexer-tokens)
+        start (:start first-token)
+        end (+ (:start last-token)
+               (:count last-token))]
+    (make-token (:src first-token)
+                start
+                (- end start))))
+
 (defn stream->token
   "Utility function to make a token from the current position of a stream"
-  ([stream begin-pos parsed-value]
+  ([stream begin-pos]
    (stream->token stream
                   begin-pos
-                  (in/position stream)
-                  parsed-value))
-  ([stream ^long begin-pos ^long end-pos parsed-value]
-   (make-token (in/source stream)
-               begin-pos
-               (- end-pos begin-pos)
-               parsed-value)))
+                  (in/position stream)))
+  ([stream ^long begin-pos ^long end-pos]
+   (when (> end-pos begin-pos)
+     (let [tokens (subvec (in/source stream)
+                          begin-pos end-pos)]
+       (lexer-tokens->token tokens)))))
+
 
 (defn merge-tokens [nodes]
   (let [tokens (vec (keep #(-> % meta :token) nodes))]
@@ -55,7 +77,7 @@
                       (start first-token)
                       (- ^long (stop last-token)
                          ^long (start first-token))
-                      nodes))))))
+                      ))))))
 
 (defn with-token [node token]
   (vary-meta (if token

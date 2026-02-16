@@ -51,8 +51,7 @@
                'source (sci/copy-var t/source token-fns)
                'start (sci/copy-var t/start token-fns)
                'stop (sci/copy-var t/stop token-fns)
-               'count (sci/copy-var t/count token-fns)
-               'parsed-value (sci/copy-var t/parsed-value token-fns)})
+               'count (sci/copy-var t/count token-fns)})
 
 (def opts {:namespaces {'ssgr ssgr-ns
                         'ssgr.token token-ns}})

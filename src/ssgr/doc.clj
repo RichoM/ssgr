@@ -2,17 +2,32 @@
   (:require [clojure.string :as str]
             [ssgr.token :as t]))
 
+(defn remove-leading-spaces [t]
+  (if-let [spaces (re-find #"^\s+" (:text t))]
+    (-> t
+        (update :text #(subs % (count spaces)))
+        (vary-meta update :token #(t/remove-leading % (count spaces))))
+    t))
+
+(defn remove-trailing-spaces [t]
+  (if-let [spaces (re-find #"\s+#*\r*\n*$" (:text t))]
+         (-> t
+             (update :text #(subs % 0 (- (count %)
+                                         (count spaces))))
+             (vary-meta update :token #(t/remove-trailing % (count spaces))))
+         t))
+
 (defn- trim-heading [elements]
   (if (seq elements) ; Make sure it's not empty
     (->> (-> (vec elements)
              (update 0 (fn [element]
                          (if (= ::text (:type element))
-                           (update element :text #(str/replace % #"^\s+" ""))
+                           (remove-leading-spaces element)
                            element)))
              (update (dec (count elements))
                      (fn [element]
                        (if (= ::text (:type element))
-                         (update element :text #(str/replace % #"\s+#*\r*\n*$" ""))
+                         (remove-trailing-spaces element)
                          element))))
          (filterv (fn [{:keys [type] :as element}]
                     (or (not= ::text type)
@@ -49,7 +64,7 @@
 (defn heading [level & elements]
   {:type ::heading
    :level level
-   :elements (compact-text-elements 
+   :elements (compact-text-elements
               (trim-heading (remove-trailing-breaks elements)))})
 
 (defn text [text]

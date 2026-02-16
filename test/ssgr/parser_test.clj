@@ -1,15 +1,110 @@
 (ns ssgr.parser-test
   (:require [clojure.test :refer [deftest is]]
             [ssgr.input-stream :as in]
+            [ssgr.lexer :as l]
             [ssgr.eval :as e]
             [ssgr.parser :as p]
             [ssgr.doc :as d]
+            [ssgr.token :as t]
             [hiccup.compiler :as h.c]
-            [clojure.string :as str]))
+            [clojure.string :as str]
+            [clojure.test :as test]
+            [clojure.walk :as w]
+            [clojure.data :refer [diff]]))
+
+(defn parse* [src]
+  (p/parse src {} e/eval-form))
+
+(defn find-first [type nodes]
+  (let [result (volatile! nil)]
+    (w/prewalk (fn [node]
+                 (if (= type (:type node))
+                   (do (vreset! result node)
+                       nil)
+                   node))
+               nodes)
+    @result))
+
+(defn parse-token [node token]
+  (let [sanitized-input (t/input-value token)
+        #_(case (:type node)
+                          ;;; NOTE(Richo): This doesn't work because we're trying to sanitize
+                          ;;; the heading element instead of its text child elements. I need
+                          ;;; to make some walking function that also keeps track of the path
+                          ;;; (parent nodes) that correspond to this node and if we're a text
+                          ;;; inside a heading we sanitize the input or something like that...
+            :ssgr.doc/heading (-> (t/input-value token)
+                                  (str/replace #"^\s+" "")
+                                  (str/replace #"\s+#*\r*\n*$" ""))
+            (t/input-value token))
+        token-parsed (parse* sanitized-input)
+        actual (find-first (:type node) token-parsed)]
+    actual))
+
+(def excepted-types
+  "These types get excluded from the token validation. They simply get skipped"
+  #{:ssgr.doc/soft-break :ssgr.doc/hard-break})
+
+(def stop-types
+  "These types stop the token validation process and prevent it from analyzing
+   their children"
+  #{;:ssgr.doc/heading
+    })
+
+(defn assert-valid-tokens [result]
+  (w/prewalk (fn [node]
+               (let [type (:type node)]
+                 #_(when type
+                     (println type))
+                 (when (and (map? node)
+                            (not (excepted-types type)))
+                   (when-not (and (= type :ssgr.doc/text)
+                                  (re-matches #"\s+" (:text node)))
+                     (when-let [token (-> node meta :token)]
+                       (is (= node (parse-token node token))
+                           (str "Invalid token '" (t/input-value token)
+                                "' for node of type " type)))))
+                 (if (and (map? node)
+                          (stop-types type))
+                   nil
+                   node)))
+             result))
+
+(defn find-missing-tokens [result]
+  (let [missing-tokens (volatile! #{})]
+    (w/prewalk (fn [f]
+                 (when (and (map? f)
+                            (some? (:type f)))
+                   (when-not (-> f meta :token)
+                     (when-not (and (= :ssgr.doc/document (:type f))
+                                    (empty? (:blocks f)))
+                       (vswap! missing-tokens conj (:type f)))))
+                 f)
+               result)
+    @missing-tokens))
+
+(defn parse
+  [src & {:keys [check-valid-tokens? check-missing-tokens?]
+          :or {check-valid-tokens? true
+               check-missing-tokens? true}}]
+  (let [result (parse* src)
+        missing-tokens (find-missing-tokens result)]
+    (when check-missing-tokens?
+      (is (empty? missing-tokens)))
+    (when (and check-valid-tokens?
+               (empty? missing-tokens))
+      (assert-valid-tokens result))
+    result))
+
+(defn tparse [src]
+  (let [result (p/parse src {:debug true} e/eval-form)]
+    (tap> result)
+    result))
+
 
 (deftest blank-line
   (let [blank? #(= {:type :ssgr.parser/blank}
-                   (p/parse-blank-line! (in/make-stream %)))]
+                   (p/parse-blank-line! (in/make-stream (l/tokenize %))))]
     (is (blank? "\n"))
     (is (blank? "\t\n"))
     (is (blank? "   \n"))
@@ -18,8 +113,7 @@
     (is (not (blank? "  asdf\n")))
     (is (not (blank? "    asdf\n")))))
 
-(defn parse [src]
-  (p/parse src {} e/eval-form))
+
 
 (deftest regular-text
   (is (= (parse "Texto normal")
@@ -111,8 +205,10 @@
 
 (deftest setext-heading-underline-line
   (let [setext-heading-underline?
-        (fn [src]
-          (let [doc (parse (str "title\n" src))
+        (fn [src & {:keys [check-valid-tokens?]
+                    :or {check-valid-tokens? true}}]
+          (let [doc (parse (str "title\n" src)
+                           :check-valid-tokens? check-valid-tokens?)
                 heading (-> doc :blocks first)]
             (and (= :ssgr.doc/heading (:type heading))
                  (= [(d/text "title")] (:elements heading))
@@ -121,7 +217,13 @@
     (is (setext-heading-underline? "="))
     (is (setext-heading-underline? "------   "))
     (is (setext-heading-underline? "   -"))
-    (is (not (setext-heading-underline? "    -")))
+
+    ; The following case seems to be special in the sense that the token is 
+    ; correct but the check is wrong, that's why I'm disabling the check for
+    ; this case only
+    (is (not (setext-heading-underline?
+              "    -"
+              :check-valid-tokens? false)))
     (is (not (setext-heading-underline? "-=")))))
 
 (deftest setext-headings
@@ -427,6 +529,7 @@
                        (d/hard-break)
                        (d/text "bar"))))))
 
+
 (deftest link-with-other-link-inside
   (is (= (parse "[link con [otro link](url2) adentro](url)")
          (d/document
@@ -571,7 +674,13 @@
            (d/text "_"))))))
 
 (deftest emphasis-rules-9-10
-  (is (= (parse "*****Hello*world****")
+  ; I think this one is a false positive, but I don't know how to fix the check
+  ; because the emphasis rules are dependant on the surrounding chars, and if I
+  ; parse only the token the emphasis precedence changes and the result is not 
+  ; the same as it was before. I checked the tokens manually but, just in case, 
+  ; I leave this comment here for future Richo to be aware of this
+  (is (= (parse "*****Hello*world****"
+                :check-valid-tokens? false)
          (d/document
           (d/paragraph (d/text "**")
                        (d/emphasis
@@ -605,7 +714,7 @@
                        (d/text "_"))))
       "Example 371")
   (is (= (parse "_(_foo)")
-         (d/document 
+         (d/document
           (d/paragraph (d/text "_")
                        (d/text "(")
                        (d/text "_")
@@ -678,7 +787,11 @@
            (d/list-item (d/paragraph (d/text "Diego"))))))))
 
 (deftest list-with-sublists
-  (is (= (parse "1. item one\n2. item two\n   - sublist\n   - sublist")
+  ; This one is a little tricky but I also think it's a false positive because the rules for 
+  ; sublists are weird. In this case if I take the sublist token and parse it separately it
+  ; won't produce the same sublist, but the token is still correct.
+  (is (= (parse "1. item one\n2. item two\n   - sublist\n   - sublist"
+                :check-valid-tokens? false)
          (d/document
           (d/ordered-list
            1
@@ -689,12 +802,14 @@
                          (d/list-item (d/paragraph (d/text "sublist"))))))))))
 
 (deftest deeply-nested-list
-  (is (= (parse "1. item one\n2. item two\n   - sublist\n     que continúa en la siguiente línea.\n\n     Y que además tiene otro párrafo.\n   - sublist")
+  ; Another false positive
+  (is (= (parse "1. item one\n2. item two\n   - sublist\n     que continúa en la siguiente línea.\n\n     Y que además tiene otro párrafo.\n   - sublist"
+                :check-valid-tokens? false)
          (d/document
           (d/ordered-list
            1
            (d/list-item (d/paragraph (d/text "item one")))
-           (d/list-item 
+           (d/list-item
             (d/paragraph (d/text "item two"))
             (d/bullet-list
              (d/list-item (d/paragraph (d/text "sublist")
@@ -704,7 +819,8 @@
              (d/list-item (d/paragraph (d/text "sublist")))))))))
   ; NOTE(Richo): This text should parse the same as before, the only difference is that the blank
   ; line between paragraphs also contains the exact number of spaces to be part of the list item
-  (is (= (parse "1. item one\n2. item two\n   - sublist\n     que continúa en la siguiente línea.\n     \n     Y que además tiene otro párrafo.\n   - sublist")
+  (is (= (parse "1. item one\n2. item two\n   - sublist\n     que continúa en la siguiente línea.\n     \n     Y que además tiene otro párrafo.\n   - sublist"
+                :check-valid-tokens? false)
          (d/document
           (d/ordered-list
            1
@@ -717,16 +833,17 @@
                                        (d/text "que continúa en la siguiente línea."))
                           (d/paragraph (d/text "Y que además tiene otro párrafo.")))
              (d/list-item (d/paragraph (d/text "sublist")))))))))
-  (is (= (parse "1. item one\n   - sublist\n     * sub sub list\n   - sublist")
+  (is (= (parse "1. item one\n   - sublist\n     * sub sub list\n   - sublist"
+                :check-valid-tokens? false)
          (d/document
           (d/ordered-list
            1
            (d/list-item
             (d/paragraph (d/text "item one"))
             (d/bullet-list
-             (d/list-item 
+             (d/list-item
               (d/paragraph (d/text "sublist"))
-              (d/bullet-list 
+              (d/bullet-list
                (d/list-item (d/paragraph (d/text "sub sub list")))))
              (d/list-item
               (d/paragraph (d/text "sublist"))))))))))
@@ -740,25 +857,34 @@
           (d/blockquote (d/paragraph (d/text "foo")
                                      (d/soft-break)
                                      (d/text "bar"))))))
-  (is (= (parse "> foo\n>bar")
+  ; This case is also a false positive, because the second blockquote marker changes
+  ; its meaning depending on the presence of the first. So we can't check it using the
+  ; existing system
+  (is (= (parse "> foo\n>bar"
+                :check-valid-tokens? false)
          (d/document
           (d/blockquote (d/paragraph (d/text "foo")
                                      (d/soft-break)
                                      (d/text "bar"))))))
-  (is (= (parse "> foo\n> bar")
+  ; Same as previous test case
+  (is (= (parse "> foo\n> bar"
+                :check-valid-tokens? false)
          (d/document
           (d/blockquote (d/paragraph (d/text "foo")
                                      (d/soft-break)
                                      (d/text "bar")))))))
 
 (deftest nested-blockquotes
-  (is (= (parse "> foo\n>>bar")
+  ; This case is also a false positive, because the presence of the first blockquote
+  ; changes the meaning of the second one.
+  (is (= (parse "> foo\n>>bar"
+                :check-valid-tokens? false)
          (d/document
           (d/blockquote (d/paragraph (d/text "foo"))
                         (d/blockquote (d/paragraph (d/text "bar"))))))))
 
 (deftest list-inside-blockquote
-  (is (= (parse "> 1. Richo\n> 2. Diego")
+  (is (= (tparse "> 1. Richo\n> 2. Diego")
          (d/document
           (d/blockquote (d/ordered-list
                          1
@@ -788,7 +914,8 @@
 3. C
    1. CA
    2. CB
-   3. CC")
+   3. CC"
+                :check-valid-tokens? false)
          (d/document
           (d/ordered-list
            1
@@ -825,7 +952,8 @@
   3. C
      1. CA
      2. CB
-     3. CC")
+     3. CC"
+                :check-valid-tokens? false)
          (d/document
           (d/ordered-list
            1
@@ -947,37 +1075,3 @@ AB.
               (d/paragraph (d/text "text"))
               (d/code-block "" "code")))))))
 
-(comment 
-
-(def src "1. text\n\n       code")
-
-  (parse "    code")
-  (d/pretty-print (parse src))
-  (d/pretty-print *1)
-  (tap> *1)
-
-)
-
-(comment
- ;  <paragraph>
- ;   <text> [</text>
- ;           <text>link con </text>
- ;           <link destination= "url2" title= "" >
- ;            <text>otro link</text>
- ;           </link>
- ;           <text> adentro</text>
- ;           <text>] </text>
- ;   <text> (url) </text>
- ;  </paragraph>
-
-  (parse " adentro](url)")
-  (parse "[link con [otro link](url2) adentro](url)")
-  
-  (tap> *1)
-
-  (def test (atom 42))
-  (loop [] (when (pos? @test) (swap! test dec) (recur)))
-  @test
-
-
-  )
