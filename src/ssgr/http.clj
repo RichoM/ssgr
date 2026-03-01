@@ -145,8 +145,8 @@
                  [:ul
                   (for [child files]
                     [:li child])]
-                 [:hr]
-                 [:footer {:style {"text-align" "center"}} "Served by http-server.clj"]]]
+                 
+                 ]]
                html/html
                str)}))
 
