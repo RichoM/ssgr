@@ -6,6 +6,7 @@
             [ssgr.clojure :as c]
             [ssgr.renderer :as r]
             [ssgr.eval :as e]
+            [ssgr.watcher :as w]
             [ssgr.utils :as u])
   (:gen-class))
 
@@ -32,18 +33,20 @@
     (u/write-file! (str (fs/strip-ext out) ".html")
                    html)))
 
-(defn process! [src out options]
-  (println "Looking for files on" (str src))
-  (u/delete-all! out)
+(defn process! [input output options]
+  (println "Looking for files on" (str input))
+  (u/delete-all! output)
   (e/reset-callbacks!)
-  (let [files (u/list-files src)
+  (let [files (u/list-files input)
         begin-time (System/nanoTime)]
     (println "Found" (count files) "files.")
     (doseq [path files]
       (try
-        (let [out-path (str/replace-first path (str src) (str out))]
+        (let [out-path (str/replace-first path 
+                                          (str input) 
+                                          (str output))]
           (when (:verbose options)
-            (println (str src)))
+            (println (str input)))
           (case (fs/extension path)
             "md" (process-md-file! path out-path options)
             "cljmd" (process-cljmd-file! path out-path options)
@@ -57,6 +60,13 @@
                (/ (double (- end-time begin-time))
                   1000000.0)
                "ms"))))
+
+(defn start-watcher! [input output options]
+  (w/start-watcher!
+   input
+   (fn [_evt _child]
+     (println)
+     (process! input output options))))
 
 (defmacro project-data [key]
   ; HACK(Richo): This macro allows to read the project.clj file at compile time
@@ -74,7 +84,7 @@
 (defn usage [options-summary]
   (->> [project-name
         ""
-        "Usage: ssgr [options] in out"
+        "Usage: ssgr [options]"
         ""
         "Options:"
         options-summary]
@@ -84,15 +94,32 @@
   (str "Error:\n\n"
        (str/join \newline errors)))
 
+
+
 (def cli-options
-  [["-d" "--debug"
+  [["-i" "--input PATH" "Path to input files"
+    :missing "Input path is required"
+    :parse-fn fs/path
+    :validate [#(and (fs/directory? %) (fs/exists? %))
+               "Must be an existing directory"]]
+   ["-o" "--output PATH" "Path to output files"
+    :missing "Output path is required"
+    :parse-fn fs/path
+    :validate [#(and (fs/directory? %) (fs/exists? %))
+               "Must be an existing directory"]]
+   ["-s" "--serve PORT" "Port number"
+    :parse-fn #(Integer/parseInt %)
+    :validate [#(< 0 % 0x10000) "Must be a number between 0 and 65536"]]
+   ["-w" "--watch"
+    :default false]
+   ["-d" "--debug"
     :default false]
    ["-v" "--verbose"
     :default false]
    ["-h" "--help"]])
 
 (defn validate-args [args]
-  (let [{:keys [arguments errors options summary]} (cli/parse-opts args cli-options)]
+  (let [{:keys [ errors options summary]} (cli/parse-opts args cli-options)]
     (cond
       (:help options)
       {:exit-message (usage summary) :ok? true}
@@ -100,21 +127,26 @@
       errors
       {:exit-message (error-msg errors)}
 
-      (>= (count arguments) 1)
-      (let [[src out] arguments]
-        {:src (fs/path src)
-         :out (fs/path (or out "out"))
-         :options options})
-      
       :else
-      {:exit-message (usage summary)})))
+      {:options options})))
 
 (defn exit [status msg]
   (println msg)
   (System/exit status))
 
 (defn -main [& args]
-  (let [{:keys [src out options exit-message ok?]} (validate-args args)]
+  (let [{:keys [options exit-message ok?]} (validate-args args)]
     (if exit-message
       (exit (if ok? 0 1) exit-message)
-      (process! src out options))))
+      (let [{:keys [input output watch serve]} options]
+        (process! input output options)
+        (when watch
+          (start-watcher! input output options))))))
+
+(comment
+  (-main )
+  (-main "-i" "src" 
+         "-o" "out"
+         ;"-s" "8081"
+         )
+  )
