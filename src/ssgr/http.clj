@@ -133,8 +133,9 @@
      (str rel-path ending)]))
 
 (defn- index [dir f]
-  (let [files (map #(file-link dir %)
-                   (fs/list-dir f))]
+  (let [files (->> (fs/list-dir f)
+                   (remove fs/hidden?)
+                   (map #(file-link dir %)))]
     {:body (-> [:html
                 [:head
                  [:meta {:charset "UTF-8"}]
