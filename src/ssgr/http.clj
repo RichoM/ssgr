@@ -202,6 +202,11 @@
     (let [f (fs/path dir (str/replace-first (URLDecoder/decode uri) #"^/" ""))
           index-file (fs/path f "index.html")]
       (cond
+        (and (fs/directory? f)
+             (not (str/ends-with? uri "/")))
+        {:status 302 
+         :headers {"location" (str uri "/")}}
+
         (and (fs/directory? f) (fs/readable? index-file))
         (body index-file)
       
