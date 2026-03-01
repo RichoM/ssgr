@@ -7,6 +7,7 @@
                  [hiccup "1.0.5"]
                  [babashka/fs "0.5.23"]
                  [org.babashka/sci "0.9.44"]
+                 [http-kit "2.8.1"]
                  [org.clojure/tools.cli "1.1.230"]]
   :main ssgr.core
   :target-path "target/%s"

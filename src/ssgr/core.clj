@@ -7,6 +7,7 @@
             [ssgr.renderer :as r]
             [ssgr.eval :as e]
             [ssgr.watcher :as w]
+            [ssgr.http :as http]
             [ssgr.utils :as u])
   (:gen-class))
 
@@ -104,9 +105,7 @@
                "Must be an existing directory"]]
    ["-o" "--output PATH" "Path to output files"
     :missing "Output path is required"
-    :parse-fn fs/path
-    :validate [#(and (fs/directory? %) (fs/exists? %))
-               "Must be an existing directory"]]
+    :parse-fn fs/path]
    ["-s" "--serve PORT" "Port number"
     :parse-fn #(Integer/parseInt %)
     :validate [#(< 0 % 0x10000) "Must be a number between 0 and 65536"]]
@@ -141,12 +140,18 @@
       (let [{:keys [input output watch serve]} options]
         (process! input output options)
         (when watch
-          (start-watcher! input output options))))))
+          (start-watcher! input output options))
+        (when serve
+          (http/start-server! output serve))))))
 
 (comment
   (-main )
-  (-main "-i" "src" 
+  (-main "-i" "doc" 
          "-o" "out"
          ;"-s" "8081"
          )
+  
+
+  
+
   )
