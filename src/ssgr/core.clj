@@ -65,9 +65,17 @@
 (defn start-watcher! [input output options]
   (w/start-watcher!
    input
-   (fn [_evt _child]
+   (fn [evt child]
      (println)
-     (process! input output options))))
+     (println (str evt) "->" (str child))
+     (http/pause-while!
+      #(process! input output options))
+     (http/reload-all!)))
+  (println "Watching for changes on" (str input)))
+
+(defn start-server! [dir port]
+  (http/start-server! dir port)
+  (println "Serving files on" (str "http://localhost:" port)))
 
 (defmacro project-data [key]
   ; HACK(Richo): This macro allows to read the project.clj file at compile time
@@ -138,18 +146,20 @@
     (if exit-message
       (exit (if ok? 0 1) exit-message)
       (let [{:keys [input output watch serve]} options]
-        (process! input output options)
+        (println "Starting ssgr...")
         (when watch
           (start-watcher! input output options))
         (when serve
-          (http/start-server! output serve))))))
+          (start-server! output serve))
+        (println)
+        (process! input output options)))))
 
 (comment
   (-main )
   (-main "-i" "doc" 
          "-o" "out"
-         ;"-s" "8081"
-         )
+         "-s" "8080"
+         "-w")
   
 
   

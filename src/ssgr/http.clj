@@ -6,6 +6,18 @@
   (:import [java.net URLDecoder URLEncoder]))
 
 
+(def html-end-tags #"(?i)(<\s*\/\s*body\s*>\s*)?(<\s*\/\s*html\s*>\s*)?$")
+
+(def reload-script
+  "let socket = new WebSocket('/');
+ socket.onopen = () => {
+   socket.onmessage = () => { location.reload(); };
+ }")
+
+(defn inject-reload-script [html-string]
+  (str/replace-first html-string html-end-tags
+                     (str "<script>" reload-script "</script>" "$0")))
+
 ;; A simple mime type utility from https://github.com/ring-clojure/ring/blob/master/ring-core/src/ring/util/mime_type.clj
 (def ^{:doc "A map of file extensions to mime-types."}
   default-mime-types
@@ -145,8 +157,7 @@
                  [:ul
                   (for [child files]
                     [:li child])]
-                 
-                 ]]
+                 [:script reload-script]]]
                html/html
                str)}))
 
@@ -155,7 +166,9 @@
    (body path {}))
   ([path headers]
    {:headers (merge {"Content-Type" (ext-mime-type (fs/file-name path))} headers)
-    :body (fs/file path)}))
+    :body (if (= "html" (fs/extension path))
+            (inject-reload-script (slurp (fs/file path)))
+            (fs/file path))}))
 
 (defn- parse-range-header [range-header]
   (map #(when % (Long/parseLong %))
@@ -204,37 +217,76 @@
       (cond
         (and (fs/directory? f)
              (not (str/ends-with? uri "/")))
-        {:status 302 
+        {:status 302
          :headers {"location" (str uri "/")}}
 
         (and (fs/directory? f) (fs/readable? index-file))
         (body index-file)
-      
+
         (fs/directory? f)
         (index dir f)
-      
+
         (and (fs/readable? f) (contains? (:headers req) "range"))
         (byte-range f (:headers req))
-      
+
         (fs/readable? f)
         (body f)
-      
+
         (and (nil? (fs/extension f)) (fs/readable? (with-ext f ".html")))
         (body (with-ext f ".html"))
-      
+
         :else
         {:status 404 :body (str "Not found `" f "` in " dir)}))))
 
 (defonce server (atom nil))
+
+(def channels (atom #{}))
+
+(defn on-open [ch]
+  (swap! channels conj ch))
+
+(defn on-close [ch _] 
+  (swap! channels disj ch))
+
+(defn on-receive [_ _])
+
+(defn reload-all! []
+  (doseq [ch @channels]
+    (server/send! ch "reload!")))
+
+(defn websocket-handler [handler]
+  (fn [req]
+    (if-not (:websocket? req)
+      (handler req)
+      (server/as-channel req
+                         {:on-open    on-open
+                          :on-receive on-receive
+                          :on-close   on-close}))))
 
 (defn stop-server! []
   (when-not (nil? @server)
     (@server)
     (reset! server nil)))
 
+(def paused? (atom false))
+
+(defn pause-while! [action]
+  (reset! paused? true)
+  (action)
+  (reset! paused? false))
+
+(defn- pause-handler [handler]
+  (fn [req]
+    (if @paused?
+      (do (Thread/sleep 100)
+          (recur req))
+      (handler req))))
+
 (defn start-server! [dir port]
   (stop-server!)
-  (reset! server (server/run-server (file-router dir)
+  (reset! server (server/run-server (-> (file-router dir)
+                                        (websocket-handler)
+                                        (pause-handler))
                                     {:port port})))
 
 (comment
@@ -243,4 +295,10 @@
   @server
 
   (stop-server!)
+
+  @channels
+  (doseq [ch @channels]
+    (server/send! ch "Broadcasting: Richo capo!"))
+  
+  (reload-all!)
   )
